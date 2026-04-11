@@ -2,6 +2,7 @@ import AVFoundation
 
 final class AudioCapture {
     private var audioEngine: AVAudioEngine?
+    private var mixerNode: AVAudioMixerNode?
     private var audioBuffer: [Float] = []
     private let bufferLock = NSLock()
 
@@ -17,95 +18,55 @@ final class AudioCapture {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        // Prepare engine first so hardware format is settled
         engine.prepare()
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        print("[AudioCapture] Input format: \(inputFormat)")
 
         bufferLock.lock()
         audioBuffer.removeAll()
         bufferLock.unlock()
 
-        let converter = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
+        // Use a mixer node to handle sample rate and channel conversion
+        // This is more reliable than manual AVAudioConverter
+        let mixer = AVAudioMixerNode()
+        engine.attach(mixer)
+        engine.connect(inputNode, to: mixer, format: inputFormat)
 
-        guard converter != nil || inputFormat == Self.desiredFormat else {
-            throw AudioCaptureError.formatConversionFailed
-        }
-
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-
-            if let converter {
-                let ratio = Self.sampleRate / inputFormat.sampleRate
-                let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
-                guard let convertedBuffer = AVAudioPCMBuffer(
-                    pcmFormat: Self.desiredFormat,
-                    frameCapacity: outputFrameCapacity
-                ) else { return }
-
-                var error: NSError?
-                var allConsumed = false
-                converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                    if allConsumed {
-                        outStatus.pointee = .noDataNow
-                        return nil
-                    }
-                    allConsumed = true
-                    outStatus.pointee = .haveData
-                    return buffer
-                }
-
-                if error == nil, let floatData = convertedBuffer.floatChannelData {
-                    let samples = Array(UnsafeBufferPointer(
-                        start: floatData[0],
-                        count: Int(convertedBuffer.frameLength)
-                    ))
-                    self.bufferLock.lock()
-                    self.audioBuffer.append(contentsOf: samples)
-                    self.bufferLock.unlock()
-                }
-            } else {
-                if let floatData = buffer.floatChannelData {
-                    let samples = Array(UnsafeBufferPointer(
-                        start: floatData[0],
-                        count: Int(buffer.frameLength)
-                    ))
-                    self.bufferLock.lock()
-                    self.audioBuffer.append(contentsOf: samples)
-                    self.bufferLock.unlock()
-                }
-            }
+        mixer.installTap(onBus: 0, bufferSize: 4096, format: Self.desiredFormat) { [weak self] buffer, _ in
+            guard let self, let floatData = buffer.floatChannelData else { return }
+            let samples = Array(UnsafeBufferPointer(
+                start: floatData[0],
+                count: Int(buffer.frameLength)
+            ))
+            self.bufferLock.lock()
+            self.audioBuffer.append(contentsOf: samples)
+            self.bufferLock.unlock()
         }
 
         try engine.start()
         self.audioEngine = engine
+        self.mixerNode = mixer
+        print("[AudioCapture] Recording started")
     }
 
     func stopRecording() -> [Float] {
-        audioEngine?.inputNode.removeTap(onBus: 0)
+        mixerNode?.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
+        mixerNode = nil
 
         bufferLock.lock()
         let buffer = audioBuffer
         audioBuffer.removeAll()
         bufferLock.unlock()
 
+        let durationSec = Double(buffer.count) / Self.sampleRate
+        print("[AudioCapture] Stopped. Buffer: \(buffer.count) samples (\(String(format: "%.1f", durationSec))s)")
         return buffer
     }
 
     var isRecording: Bool {
         audioEngine?.isRunning ?? false
-    }
-}
-
-enum AudioCaptureError: LocalizedError {
-    case formatConversionFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .formatConversionFailed:
-            return "Could not create audio format converter for the current input device."
-        }
     }
 }
