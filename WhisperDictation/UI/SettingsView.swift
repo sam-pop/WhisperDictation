@@ -1,4 +1,5 @@
 import SwiftUI
+import Carbon.HIToolbox
 
 struct SettingsView: View {
     let engine: DictationEngine
@@ -8,19 +9,20 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            GeneralTab(settings: settings, engine: engine)
-                .tabItem { Label("General", systemImage: "gear") }
-
-            ModelTab(settings: settings, modelManager: modelManager, engine: engine)
-                .tabItem { Label("Model", systemImage: "brain") }
-
-            VocabularyTab(settings: settings)
-                .tabItem { Label("Vocabulary", systemImage: "text.book.closed") }
-
-            PermissionsTab(permissions: permissions)
-                .tabItem { Label("Permissions", systemImage: "lock.shield") }
+            Tab("General", systemImage: "gear") {
+                GeneralTab(settings: settings, engine: engine)
+            }
+            Tab("Model", systemImage: "brain") {
+                ModelTab(settings: settings, modelManager: modelManager, engine: engine)
+            }
+            Tab("Vocabulary", systemImage: "text.book.closed") {
+                VocabularyTab(settings: settings)
+            }
+            Tab("Permissions", systemImage: "lock.shield") {
+                PermissionsTab(permissions: permissions)
+            }
         }
-        .frame(width: 480, height: 380)
+        .frame(width: 500, height: 400)
     }
 }
 
@@ -32,17 +34,9 @@ private struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Hotkey") {
-                HStack {
-                    Text("Push-to-talk key:")
-                    Spacer()
-                    Text(hotkeyName)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(.quaternary)
-                        .cornerRadius(6)
-                }
-                Text("Hold to record, release to transcribe")
+            Section("Push-to-Talk Hotkey") {
+                HotkeyRecorder(keyCode: $settings.hotkeyKeyCode)
+                Text("Hold this key to record, release to transcribe")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -58,15 +52,144 @@ private struct GeneralTab: View {
         .formStyle(.grouped)
         .padding()
     }
+}
 
-    private var hotkeyName: String {
-        switch settings.hotkeyKeyCode {
-        case 61: "Right Option"
-        case 58: "Left Option"
-        case 59: "Left Control"
-        case 62: "Right Control"
-        default: "Key \(settings.hotkeyKeyCode)"
+// MARK: - Hotkey Recorder
+
+private struct HotkeyRecorder: View {
+    @Binding var keyCode: Int
+    @State private var isRecording = false
+
+    var body: some View {
+        HStack {
+            Text("Key:")
+            Spacer()
+
+            Button(action: { isRecording.toggle() }) {
+                Text(isRecording ? "Press any key..." : keyName(for: keyCode))
+                    .frame(minWidth: 140)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(isRecording ? Color.accentColor.opacity(0.2) : Color(.controlBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(isRecording ? Color.accentColor : Color(.separatorColor), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .onKeyPress(phases: .down) { keyPress in
+                guard isRecording else { return .ignored }
+                // Map the key press to a CGKeyCode
+                if let mapped = mapKeyPress(keyPress) {
+                    keyCode = mapped
+                    isRecording = false
+                    return .handled
+                }
+                return .ignored
+            }
         }
+
+        if isRecording {
+            Text("Press the key you want to use, or click again to cancel")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+
+        HStack(spacing: 8) {
+            Text("Quick pick:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(presetKeys, id: \.code) { preset in
+                Button(preset.name) {
+                    keyCode = preset.code
+                    isRecording = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(keyCode == preset.code ? .accentColor : nil)
+            }
+        }
+    }
+
+    private var presetKeys: [(name: String, code: Int)] {
+        [
+            ("Right Option", 61),
+            ("Left Option", 58),
+            ("Right Control", 62),
+            ("Left Control", 59),
+            ("Fn", 63),
+        ]
+    }
+
+    private func keyName(for code: Int) -> String {
+        switch code {
+        case 61: return "Right Option (⌥)"
+        case 58: return "Left Option (⌥)"
+        case 59: return "Left Control (⌃)"
+        case 62: return "Right Control (⌃)"
+        case 63: return "Fn"
+        case 56: return "Left Shift (⇧)"
+        case 60: return "Right Shift (⇧)"
+        case 55: return "Left Command (⌘)"
+        case 54: return "Right Command (⌘)"
+        case 57: return "Caps Lock"
+        case 36: return "Return"
+        case 49: return "Space"
+        case 53: return "Escape"
+        case 48: return "Tab"
+        default:
+            // Try to get a readable name from the key code
+            if let name = keyCodeToString(code) {
+                return name
+            }
+            return "Key \(code)"
+        }
+    }
+
+    private func keyCodeToString(_ code: Int) -> String? {
+        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        guard let layoutDataRef = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let layoutData = unsafeBitCast(layoutDataRef, to: CFData.self)
+        let layout = unsafeBitCast(CFDataGetBytePtr(layoutData), to: UnsafePointer<UCKeyboardLayout>.self)
+
+        var deadKeyState: UInt32 = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        var length: Int = 0
+
+        let status = UCKeyTranslate(
+            layout,
+            UInt16(code),
+            UInt16(kUCKeyActionDisplay),
+            0, // no modifiers
+            UInt32(LMGetKbdType()),
+            UInt32(kUCKeyTranslateNoDeadKeysBit),
+            &deadKeyState,
+            chars.count,
+            &length,
+            &chars
+        )
+
+        guard status == noErr, length > 0 else { return nil }
+        return String(utf16CodeUnits: chars, count: length).uppercased()
+    }
+
+    private func mapKeyPress(_ keyPress: KeyPress) -> Int? {
+        // Map known modifier keys by checking the key equivalents
+        // For regular keys, we need to use the hardware key scan code
+        // SwiftUI's KeyPress doesn't directly expose CGKeyCode, so
+        // we rely on the preset buttons for modifier keys and
+        // provide character-based mapping for regular keys
+        let char = keyPress.characters.lowercased()
+        let knownMappings: [String: Int] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5,
+            "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12,
+            "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "1": 18,
+            "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "9": 25,
+            "7": 26, "8": 28, "0": 29, "o": 31, "u": 32, "i": 34,
+            "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
+        ]
+        return knownMappings[char]
     }
 }
 
@@ -83,7 +206,7 @@ private struct ModelTab: View {
                 ForEach(ModelManager.ModelInfo.all, id: \.fileName) { model in
                     ModelRow(
                         model: model,
-                        isSelected: settings.selectedModel.contains(model.fileName.replacingOccurrences(of: "ggml-", with: "").replacingOccurrences(of: ".bin", with: "")),
+                        isSelected: isModelSelected(model),
                         isDownloaded: modelManager.isModelDownloaded(model),
                         modelManager: modelManager,
                         settings: settings,
@@ -111,6 +234,13 @@ private struct ModelTab: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private func isModelSelected(_ model: ModelManager.ModelInfo) -> Bool {
+        let modelKey = model.fileName
+            .replacingOccurrences(of: "ggml-", with: "")
+            .replacingOccurrences(of: ".bin", with: "")
+        return settings.selectedModel == modelKey
     }
 }
 

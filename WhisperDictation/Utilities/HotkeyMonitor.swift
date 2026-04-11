@@ -7,9 +7,14 @@ final class HotkeyMonitor {
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
 
-    // Default: right Option key (keycode 61)
     private var monitoredKeyCode: CGKeyCode {
         CGKeyCode(AppSettings.shared.hotkeyKeyCode)
+    }
+
+    /// Whether the monitored key is a modifier (Option, Control, Shift, Command, Fn, Caps Lock)
+    private var isModifierKey: Bool {
+        let code = Int(monitoredKeyCode)
+        return [54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code)
     }
 
     private var isKeyHeld = false
@@ -30,7 +35,6 @@ final class HotkeyMonitor {
                         (1 << CGEventType.keyUp.rawValue) |
                         (1 << CGEventType.flagsChanged.rawValue)
 
-        // Store self as unmanaged pointer for the C callback
         let selfPtr = Unmanaged.passRetained(self).toOpaque()
 
         eventTap = CGEvent.tapCreate(
@@ -69,25 +73,51 @@ final class HotkeyMonitor {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // For modifier-only keys (like Option), we use flagsChanged events
-        if type == .flagsChanged {
-            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            if keyCode == monitoredKeyCode {
-                // Check if the key is pressed by looking at the flags
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+        if isModifierKey {
+            // Modifier keys use flagsChanged events
+            if type == .flagsChanged && keyCode == monitoredKeyCode {
                 let flags = event.flags
-                let isPressed = flags.contains(.maskAlternate) // Option key
+                let isPressed = isModifierPressed(flags)
                 if isPressed && !isKeyHeld {
                     isKeyHeld = true
                     DispatchQueue.main.async { self.onKeyDown() }
-                    return nil // Consume the event
+                    return nil
                 } else if !isPressed && isKeyHeld {
                     isKeyHeld = false
                     DispatchQueue.main.async { self.onKeyUp() }
-                    return nil // Consume the event
+                    return nil
+                }
+            }
+        } else {
+            // Regular keys use keyDown/keyUp events
+            if keyCode == monitoredKeyCode {
+                if type == .keyDown && !isKeyHeld {
+                    isKeyHeld = true
+                    DispatchQueue.main.async { self.onKeyDown() }
+                    return nil
+                } else if type == .keyUp && isKeyHeld {
+                    isKeyHeld = false
+                    DispatchQueue.main.async { self.onKeyUp() }
+                    return nil
                 }
             }
         }
 
         return Unmanaged.passRetained(event)
+    }
+
+    private func isModifierPressed(_ flags: CGEventFlags) -> Bool {
+        let code = Int(monitoredKeyCode)
+        switch code {
+        case 58, 61: return flags.contains(.maskAlternate)   // Option keys
+        case 59, 62: return flags.contains(.maskControl)     // Control keys
+        case 56, 60: return flags.contains(.maskShift)       // Shift keys
+        case 54, 55: return flags.contains(.maskCommand)     // Command keys
+        case 57:     return flags.contains(.maskAlphaShift)  // Caps Lock
+        case 63:     return flags.contains(.maskSecondaryFn) // Fn
+        default:     return false
+        }
     }
 }
