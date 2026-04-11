@@ -36,7 +36,8 @@ final class WhisperBridge: @unchecked Sendable {
         queue.sync {
             let startTime = CFAbsoluteTimeGetCurrent()
 
-            var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+            var params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH)
+            params.beam_search.beam_size = 5
             params.language = UnsafePointer(strdup("en"))
             params.translate = false
             params.no_context = true

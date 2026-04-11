@@ -1,0 +1,222 @@
+import Foundation
+
+final class TextCorrector {
+    static let shared = TextCorrector()
+
+    func correct(_ text: String) -> String {
+        guard AppSettings.shared.grammarCorrectionEnabled else { return text }
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        var result = text
+        result = fixAcronymsAndTerms(result)
+        result = fixCapitalization(result)
+        result = fixPunctuation(result)
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        print("[TextCorrector] \(String(format: "%.1f", elapsed))ms: \"\(text)\" → \"\(result)\"")
+        return result
+    }
+
+    // MARK: - Pass 1: Acronym & Term Casing
+
+    /// Word-boundary-aware replacement of common dev terms
+    private func fixAcronymsAndTerms(_ text: String) -> String {
+        var result = text
+        for (pattern, replacement) in Self.termPatterns {
+            result = result.replacingOccurrences(
+                of: pattern,
+                with: replacement,
+                options: .regularExpression
+            )
+        }
+        return result
+    }
+
+    // MARK: - Pass 2: Capitalization
+
+    private func fixCapitalization(_ text: String) -> String {
+        var result = text
+
+        // Capitalize first character
+        if let first = result.first, first.isLowercase {
+            result = first.uppercased() + result.dropFirst()
+        }
+
+        // Capitalize after sentence-ending punctuation
+        let sentencePattern = try! NSRegularExpression(pattern: "([.!?])\\s+([a-z])")
+        let mutable = NSMutableString(string: result)
+        sentencePattern.replaceMatches(
+            in: mutable,
+            range: NSRange(location: 0, length: mutable.length),
+            withTemplate: "$1 " // placeholder — we need a block-based approach
+        )
+        // Use a proper block-based approach for sentence caps
+        result = capitalizeSentenceStarts(result)
+
+        // Capitalize standalone "i"
+        result = result.replacingOccurrences(
+            of: "\\b[Ii]\\b(?!')",
+            with: "I",
+            options: .regularExpression
+        )
+        // Fix "i'm", "i'll", "i've", "i'd"
+        result = result.replacingOccurrences(
+            of: "\\bi'([mldvs])",
+            with: "I'$1",
+            options: .regularExpression
+        )
+
+        return result
+    }
+
+    private func capitalizeSentenceStarts(_ text: String) -> String {
+        var chars = Array(text)
+        var capitalizeNext = true
+
+        for i in chars.indices {
+            if capitalizeNext && chars[i].isLetter {
+                chars[i] = Character(chars[i].uppercased())
+                capitalizeNext = false
+            } else if ".!?".contains(chars[i]) {
+                capitalizeNext = true
+            } else if chars[i].isLetter {
+                capitalizeNext = false
+            }
+        }
+        return String(chars)
+    }
+
+    // MARK: - Pass 3: Punctuation Cleanup
+
+    private func fixPunctuation(_ text: String) -> String {
+        var result = text
+
+        // Remove space before punctuation: "hello ." → "hello."
+        result = result.replacingOccurrences(
+            of: "\\s+([.!?,;:])",
+            with: "$1",
+            options: .regularExpression
+        )
+
+        // Fix double/triple spaces
+        result = result.replacingOccurrences(
+            of: "\\s{2,}",
+            with: " ",
+            options: .regularExpression
+        )
+
+        // Trim
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Add period at end if missing punctuation (but not for single words or very short text)
+        if result.count > 3,
+           let last = result.last,
+           !".!?,;:\"')".contains(last) {
+            result += "."
+        }
+
+        return result
+    }
+
+    // MARK: - Term Dictionary
+
+    /// Compiled regex patterns for word-boundary-aware term replacement.
+    /// Format: (regex pattern, replacement string)
+    private static let termPatterns: [(String, String)] = {
+        // Terms where the match is case-insensitive and replacement is the correct form
+        let upperTerms = [
+            // Pure acronyms (all caps)
+            "api", "sdk", "cli", "ide", "orm", "cdn", "dns", "ssl", "tls", "ssh",
+            "html", "css", "xml", "sql", "jwt", "csv", "pdf", "svg", "png", "jpg",
+            "gif", "url", "uri", "http", "https", "ajax", "cors", "csrf", "xss",
+            "crud", "rest", "grpc", "tcp", "udp", "ip", "vpn", "ram", "cpu", "gpu",
+            "ssd", "hdd", "usb", "hdmi", "json", "yaml", "toml", "uuid", "guid",
+            "aws", "gcp", "ecs", "eks", "rds", "sqs", "sns", "iam", "vpc",
+            "ec2", "s3", "cdn", "ddos", "dos", "vm", "ci", "cd",
+            "tdd", "bdd", "ddd", "mvc", "mvvm", "oop", "fp",
+            "rbac", "acl", "sso", "mfa", "saml", "ldap",
+            "llm", "gpt", "rag", "nlp", "ml", "ai",
+            "ascii", "utf", "hex", "rgb", "hsl",
+            "npm", "npx",
+        ]
+
+        let mixedCaseTerms: [(String, String)] = [
+            // Proper nouns / brand names
+            ("javascript", "JavaScript"), ("typescript", "TypeScript"),
+            ("python", "Python"), ("golang", "Golang"),
+            ("swift", "Swift"), ("swiftui", "SwiftUI"),
+            ("kotlin", "Kotlin"), ("java", "Java"),
+            ("rust", "Rust"), ("ruby", "Ruby"),
+            ("haskell", "Haskell"), ("elixir", "Elixir"),
+            ("php", "PHP"), ("perl", "Perl"),
+            ("csharp", "C#"), ("fsharp", "F#"),
+            ("objective-c", "Objective-C"), ("objectivec", "Objective-C"),
+
+            // Frameworks & tools
+            ("react", "React"), ("nextjs", "Next.js"), ("next.js", "Next.js"),
+            ("vue", "Vue"), ("angular", "Angular"), ("svelte", "Svelte"),
+            ("express", "Express"), ("django", "Django"), ("flask", "Flask"),
+            ("fastapi", "FastAPI"), ("nestjs", "NestJS"),
+            ("tailwind", "Tailwind"), ("bootstrap", "Bootstrap"),
+            ("webpack", "Webpack"), ("vite", "Vite"),
+            ("docker", "Docker"), ("kubernetes", "Kubernetes"),
+            ("terraform", "Terraform"), ("ansible", "Ansible"),
+            ("jenkins", "Jenkins"), ("nginx", "Nginx"),
+            ("redis", "Redis"), ("elasticsearch", "Elasticsearch"),
+            ("postgresql", "PostgreSQL"), ("postgres", "PostgreSQL"),
+            ("mongodb", "MongoDB"), ("mysql", "MySQL"),
+            ("sqlite", "SQLite"), ("dynamodb", "DynamoDB"),
+            ("firebase", "Firebase"), ("firestore", "Firestore"),
+            ("supabase", "Supabase"), ("prisma", "Prisma"),
+            ("graphql", "GraphQL"),
+
+            // Platforms & services
+            ("github", "GitHub"), ("gitlab", "GitLab"),
+            ("bitbucket", "Bitbucket"), ("jira", "Jira"),
+            ("heroku", "Heroku"), ("vercel", "Vercel"),
+            ("netlify", "Netlify"), ("cloudflare", "Cloudflare"),
+            ("datadog", "Datadog"), ("sentry", "Sentry"),
+            ("grafana", "Grafana"), ("prometheus", "Prometheus"),
+
+            // Apple
+            ("macos", "macOS"), ("ios", "iOS"), ("ipados", "iPadOS"),
+            ("watchos", "watchOS"), ("tvos", "tvOS"), ("visionos", "visionOS"),
+            ("iphone", "iPhone"), ("ipad", "iPad"), ("macbook", "MacBook"),
+            ("xcode", "Xcode"), ("appkit", "AppKit"), ("uikit", "UIKit"),
+            ("coregraphics", "CoreGraphics"), ("avfoundation", "AVFoundation"),
+
+            // AI
+            ("openai", "OpenAI"), ("anthropic", "Anthropic"),
+            ("chatgpt", "ChatGPT"), ("claude", "Claude"),
+            ("copilot", "Copilot"), ("hugging face", "Hugging Face"),
+            ("pytorch", "PyTorch"), ("tensorflow", "TensorFlow"),
+
+            // Git terms
+            ("git", "Git"),
+
+            // Special: CI/CD as a compound
+            ("ci/cd", "CI/CD"), ("cicd", "CI/CD"),
+            ("devops", "DevOps"),
+            ("oauth", "OAuth"),
+            ("nosql", "NoSQL"),
+            ("webrtc", "WebRTC"),
+            ("websocket", "WebSocket"),
+        ]
+
+        var patterns: [(String, String)] = []
+
+        // Pure uppercase acronyms
+        for term in upperTerms {
+            let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: term))\\b"
+            patterns.append((pattern, term.uppercased()))
+        }
+
+        // Mixed case terms
+        for (match, replacement) in mixedCaseTerms {
+            let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: match))\\b"
+            patterns.append((pattern, replacement))
+        }
+
+        return patterns
+    }()
+}

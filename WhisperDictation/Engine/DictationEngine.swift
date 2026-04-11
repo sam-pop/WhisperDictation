@@ -129,12 +129,15 @@ final class DictationEngine {
                 return
             }
 
-            let text = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt)
+            let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt)
 
-            guard !text.isEmpty else {
+            guard !rawText.isEmpty else {
                 await MainActor.run { [weak self] in self?.state = .idle }
                 return
             }
+
+            // Grammar correction (local, <5ms)
+            let text = TextCorrector.shared.correct(rawText)
 
             await MainActor.run { [weak self] in
                 self?.lastTranscription = text
