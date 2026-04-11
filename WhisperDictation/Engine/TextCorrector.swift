@@ -8,6 +8,9 @@ final class TextCorrector {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         var result = text
+        if AppSettings.shared.numberConversionEnabled {
+            result = convertWordsToNumbers(result)
+        }
         result = fixAcronymsAndTerms(result)
         result = fixCapitalization(result)
         result = fixPunctuation(result)
@@ -15,6 +18,122 @@ final class TextCorrector {
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         print("[TextCorrector] \(String(format: "%.1f", elapsed))ms: \"\(text)\" → \"\(result)\"")
         return result
+    }
+
+    // MARK: - Pass 0: Number Word → Digit Conversion
+
+    private static let onesMap: [String: Int] = [
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+        "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+        "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    ]
+
+    private static let tensMap: [String: Int] = [
+        "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+        "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    ]
+
+    private static let scaleMap: [String: Int] = [
+        "hundred": 100, "thousand": 1_000, "million": 1_000_000,
+        "billion": 1_000_000_000, "trillion": 1_000_000_000_000,
+    ]
+
+    private static let allNumberWords: Set<String> = {
+        var words = Set(onesMap.keys)
+        words.formUnion(tensMap.keys)
+        words.formUnion(scaleMap.keys)
+        words.insert("and") // "one hundred and twenty"
+        words.insert("a") // "a hundred", "a thousand"
+        return words
+    }()
+
+    private func convertWordsToNumbers(_ text: String) -> String {
+        let words = text.components(separatedBy: " ")
+        var result: [String] = []
+        var numberWords: [String] = []
+
+        func flushNumber() {
+            guard !numberWords.isEmpty else { return }
+            if let value = parseNumberWords(numberWords) {
+                let formatter = NumberFormatter()
+                formatter.numberStyle = .decimal
+                result.append(formatter.string(from: NSNumber(value: value)) ?? "\(value)")
+            } else {
+                result.append(contentsOf: numberWords)
+            }
+            numberWords.removeAll()
+        }
+
+        for word in words {
+            let lower = word.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            if Self.allNumberWords.contains(lower) {
+                // "and" only counts as part of a number if we're already in a number sequence
+                if lower == "and" && numberWords.isEmpty {
+                    flushNumber()
+                    result.append(word)
+                } else if lower == "a" && numberWords.isEmpty {
+                    // "a hundred" = 100 — only if next word could be a scale
+                    numberWords.append(word)
+                } else {
+                    numberWords.append(word)
+                }
+            } else {
+                // "a" followed by non-number word — flush as regular word
+                if numberWords.count == 1 && numberWords[0].lowercased() == "a" {
+                    result.append(numberWords.removeFirst())
+                }
+                flushNumber()
+                result.append(word)
+            }
+        }
+        flushNumber()
+
+        return result.joined(separator: " ")
+    }
+
+    private func parseNumberWords(_ words: [String]) -> Int? {
+        let cleaned = words.map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
+            .filter { $0 != "and" }
+
+        guard !cleaned.isEmpty else { return nil }
+
+        // Simple single-digit sequence detection: "two four six eight" → 2468
+        // If ALL words are single digits (0-9), concatenate them
+        let allSingleDigits = cleaned.allSatisfy { word in
+            if let v = Self.onesMap[word], v <= 9 { return true }
+            if word == "a" { return false }
+            return false
+        }
+        if allSingleDigits && cleaned.count >= 2 {
+            let digits = cleaned.compactMap { Self.onesMap[$0] }.map(String.init).joined()
+            return Int(digits)
+        }
+
+        // Standard number parsing: "three hundred forty two" → 342
+        var total = 0
+        var current = 0
+
+        for word in cleaned {
+            if word == "a" {
+                current = 1
+            } else if let ones = Self.onesMap[word] {
+                current += ones
+            } else if let tens = Self.tensMap[word] {
+                current += tens
+            } else if word == "hundred" {
+                current = (current == 0 ? 1 : current) * 100
+            } else if let scale = Self.scaleMap[word], scale >= 1000 {
+                current = (current == 0 ? 1 : current) * scale
+                total += current
+                current = 0
+            } else {
+                return nil // unknown word
+            }
+        }
+
+        total += current
+        return total > 0 ? total : nil
     }
 
     // MARK: - Pass 1: Acronym & Term Casing

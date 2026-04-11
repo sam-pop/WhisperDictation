@@ -16,6 +16,7 @@ final class AppSettings: ObservableObject {
         case minimumRecordingDuration
         case grammarCorrectionEnabled
         case selectedAudioDeviceUID
+        case numberConversionEnabled
     }
 
     // MARK: - Properties
@@ -55,6 +56,11 @@ final class AppSettings: ObservableObject {
     var grammarCorrectionEnabled: Bool {
         get { defaults.object(forKey: Key.grammarCorrectionEnabled.rawValue) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.grammarCorrectionEnabled.rawValue); objectWillChange.send() }
+    }
+
+    var numberConversionEnabled: Bool {
+        get { defaults.object(forKey: Key.numberConversionEnabled.rawValue) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.numberConversionEnabled.rawValue); objectWillChange.send() }
     }
 
     /// nil means "use system default"
