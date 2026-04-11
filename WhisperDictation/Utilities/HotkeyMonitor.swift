@@ -29,7 +29,11 @@ final class HotkeyMonitor {
     }
 
     func start() {
-        guard eventTap == nil else { return }
+        guard eventTap == nil else {
+            print("[HotkeyMonitor] Already started")
+            return
+        }
+        fputs("[HotkeyMonitor] Starting... keyCode=\(monitoredKeyCode) isModifier=\(isModifierKey)\n", stderr)
 
         let eventMask = (1 << CGEventType.keyDown.rawValue) |
                         (1 << CGEventType.keyUp.rawValue) |
@@ -51,11 +55,12 @@ final class HotkeyMonitor {
         )
 
         guard let eventTap else {
-            print("Failed to create event tap. Is Accessibility permission granted?")
+            fputs("[HotkeyMonitor] FAILED to create event tap! Grant Accessibility permission in System Settings.\n", stderr)
             Unmanaged<HotkeyMonitor>.fromOpaque(selfPtr).release()
             return
         }
 
+        fputs("[HotkeyMonitor] Event tap created successfully\n", stderr)
         retainedSelfPtr = selfPtr
 
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)

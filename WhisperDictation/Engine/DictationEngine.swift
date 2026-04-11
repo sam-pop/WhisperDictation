@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Cocoa
 
 enum DictationState: String {
     case idle
@@ -25,6 +26,8 @@ final class DictationEngine {
     private var recordingStartTime: Date?
 
     init() {
+        let axTrusted = AXIsProcessTrusted()
+        fputs("[DictationEngine] Init. Accessibility: \(axTrusted)\n", stderr)
         setupHotkeyMonitor()
         hotkeyMonitor?.start()
         loadModelAsync()
