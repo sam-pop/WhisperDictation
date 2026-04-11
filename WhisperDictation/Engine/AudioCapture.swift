@@ -2,9 +2,9 @@ import AVFoundation
 
 final class AudioCapture {
     private var audioEngine: AVAudioEngine?
-    private var mixerNode: AVAudioMixerNode?
     private var audioBuffer: [Float] = []
     private let bufferLock = NSLock()
+    private var converter: AVAudioConverter?
 
     private static let sampleRate: Double = 16000
     private static let desiredFormat = AVAudioFormat(
@@ -21,40 +21,78 @@ final class AudioCapture {
         engine.prepare()
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        print("[AudioCapture] Input format: \(inputFormat)")
+        print("[AudioCapture] Input device format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         bufferLock.lock()
         audioBuffer.removeAll()
         bufferLock.unlock()
 
-        // Use a mixer node to handle sample rate and channel conversion
-        // This is more reliable than manual AVAudioConverter
-        let mixer = AVAudioMixerNode()
-        engine.attach(mixer)
-        engine.connect(inputNode, to: mixer, format: inputFormat)
+        // Create converter for resampling (input format → 16kHz mono Float32)
+        let conv = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
+        self.converter = conv
+        print("[AudioCapture] Converter created: \(conv != nil)")
 
-        mixer.installTap(onBus: 0, bufferSize: 4096, format: Self.desiredFormat) { [weak self] buffer, _ in
-            guard let self, let floatData = buffer.floatChannelData else { return }
-            let samples = Array(UnsafeBufferPointer(
-                start: floatData[0],
-                count: Int(buffer.frameLength)
-            ))
-            self.bufferLock.lock()
-            self.audioBuffer.append(contentsOf: samples)
-            self.bufferLock.unlock()
+        // Install tap with the INPUT's native format — never pass a custom format
+        // to installTap as it can throw uncatchable NSExceptions
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            self.processBuffer(buffer)
         }
 
         try engine.start()
         self.audioEngine = engine
-        self.mixerNode = mixer
         print("[AudioCapture] Recording started")
     }
 
+    private func processBuffer(_ buffer: AVAudioPCMBuffer) {
+        guard let converter else {
+            // No converter means formats match — use raw samples
+            appendSamples(from: buffer)
+            return
+        }
+
+        // Calculate output capacity
+        let ratio = Self.sampleRate / converter.inputFormat.sampleRate
+        let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+        guard let convertedBuffer = AVAudioPCMBuffer(
+            pcmFormat: Self.desiredFormat,
+            frameCapacity: outputCapacity
+        ) else { return }
+
+        // Use the block-based converter — feed our buffer exactly once
+        var inputConsumed = false
+        let status = converter.convert(to: convertedBuffer, error: nil) { _, outStatus in
+            if inputConsumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            inputConsumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        if (status == .haveData || status == .endOfStream),
+           convertedBuffer.frameLength > 0 {
+            appendSamples(from: convertedBuffer)
+        }
+    }
+
+    private func appendSamples(from buffer: AVAudioPCMBuffer) {
+        guard let floatData = buffer.floatChannelData else { return }
+        let samples = Array(UnsafeBufferPointer(
+            start: floatData[0],
+            count: Int(buffer.frameLength)
+        ))
+        bufferLock.lock()
+        audioBuffer.append(contentsOf: samples)
+        bufferLock.unlock()
+    }
+
     func stopRecording() -> [Float] {
-        mixerNode?.removeTap(onBus: 0)
+        audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
-        mixerNode = nil
+        converter = nil
 
         bufferLock.lock()
         let buffer = audioBuffer
