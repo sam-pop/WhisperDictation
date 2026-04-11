@@ -50,10 +50,17 @@ final class WhisperBridge: @unchecked Sendable {
                 params.beam_search.beam_size = 5
             }
 
-            params.language = UnsafePointer(strdup("en"))
+            // Track all strdup allocations to free in defer (never free static pointers)
+            let langCStr = strdup("en")
+            let suppressCStr = strdup("(Thank you|Thanks for watching|Please subscribe|you)")
+            let promptCStr = prompt.isEmpty ? nil : strdup(prompt)
+            var vadPathCStr: UnsafeMutablePointer<CChar>?
+
+            params.language = UnsafePointer(langCStr)
             params.translate = false
             params.single_segment = false
             params.suppress_nst = true
+            params.suppress_regex = UnsafePointer(suppressCStr)
 
             // Use previous transcription context for better multi-sentence accuracy
             params.no_context = false
@@ -73,12 +80,7 @@ final class WhisperBridge: @unchecked Sendable {
                 : max(1, ProcessInfo.processInfo.activeProcessorCount)
             params.n_threads = Int32(threadCount)
 
-            // Suppress common Whisper hallucinations on silence/noise
-            let suppressRegex = strdup("(Thank you|Thanks for watching|Please subscribe|you)")
-            params.suppress_regex = UnsafePointer(suppressRegex)
-
             // VAD: trim silence before inference (major speed boost)
-            var vadPathCStr: UnsafeMutablePointer<CChar>?
             if let vadPath = self.vadModelPath {
                 params.vad = true
                 vadPathCStr = strdup(vadPath)
@@ -86,13 +88,12 @@ final class WhisperBridge: @unchecked Sendable {
             }
 
             // Vocabulary prompt
-            let promptCString = prompt.isEmpty ? nil : strdup(prompt)
-            params.initial_prompt = promptCString.map { UnsafePointer($0) }
+            params.initial_prompt = promptCStr.map { UnsafePointer($0) }
 
             defer {
-                if let lang = params.language { free(UnsafeMutablePointer(mutating: lang)) }
-                if let p = promptCString { free(p) }
-                if let s = suppressRegex { free(s) }
+                free(langCStr)
+                free(suppressCStr)
+                if let p = promptCStr { free(p) }
                 if let v = vadPathCStr { free(v) }
             }
 

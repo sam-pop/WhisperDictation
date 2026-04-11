@@ -1,5 +1,6 @@
 import Cocoa
 import CoreGraphics
+import os
 
 final class HotkeyMonitor {
     private var eventTap: CFMachPort?
@@ -7,6 +8,7 @@ final class HotkeyMonitor {
     private var retainedSelfPtr: UnsafeMutableRawPointer?
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
+    private let lock = os_unfair_lock_t.allocate(capacity: 1)
 
     private var monitoredKeyCode: CGKeyCode {
         CGKeyCode(AppSettings.shared.hotkeyKeyCode)
@@ -22,17 +24,16 @@ final class HotkeyMonitor {
     init(onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
+        lock.initialize(to: os_unfair_lock())
     }
 
     deinit {
         stop()
+        lock.deallocate()
     }
 
     func start() {
-        guard eventTap == nil else {
-            print("[HotkeyMonitor] Already started")
-            return
-        }
+        guard eventTap == nil else { return }
         fputs("[HotkeyMonitor] Starting... keyCode=\(monitoredKeyCode) isModifier=\(isModifierKey)\n", stderr)
 
         let eventMask = (1 << CGEventType.keyDown.rawValue) |
@@ -67,8 +68,8 @@ final class HotkeyMonitor {
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
 
-        // macOS silently disables event taps when Accessibility permission
-        // is stale (binary was re-signed). Poll and re-enable if needed.
+        // Watchdog: macOS silently disables taps when Accessibility permission is stale.
+        // Schedule explicitly on main run loop to guarantee it fires.
         startTapWatchdog()
     }
 
@@ -76,14 +77,15 @@ final class HotkeyMonitor {
 
     private func startTapWatchdog() {
         watchdogTimer?.invalidate()
-        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self, let tap = self.eventTap else { return }
             if !CGEvent.tapIsEnabled(tap: tap) {
                 fputs("[HotkeyMonitor] Event tap was disabled by macOS! Re-enabling...\n", stderr)
-                fputs("[HotkeyMonitor] If hotkey still doesn't work, toggle Accessibility off/on in System Settings.\n", stderr)
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        watchdogTimer = timer
     }
 
     func stop() {
@@ -103,41 +105,44 @@ final class HotkeyMonitor {
         }
     }
 
-    private var eventCount = 0
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-
-        // Log first 5 events + any matching events
-        eventCount += 1
-        if eventCount <= 5 || keyCode == monitoredKeyCode {
-            fputs("[HotkeyMonitor] Event #\(eventCount) type=\(type.rawValue) keyCode=\(keyCode) monitoring=\(monitoredKeyCode) isModifier=\(isModifierKey)\n", stderr)
-        }
 
         if isModifierKey {
             if type == .flagsChanged && keyCode == monitoredKeyCode {
                 let flags = event.flags
                 let isPressed = isModifierPressed(flags)
-                if isPressed && !isKeyHeld {
+                os_unfair_lock_lock(lock)
+                let wasHeld = isKeyHeld
+                if isPressed && !wasHeld {
                     isKeyHeld = true
+                    os_unfair_lock_unlock(lock)
                     DispatchQueue.main.async { self.onKeyDown() }
                     return nil
-                } else if !isPressed && isKeyHeld {
+                } else if !isPressed && wasHeld {
                     isKeyHeld = false
+                    os_unfair_lock_unlock(lock)
                     DispatchQueue.main.async { self.onKeyUp() }
                     return nil
                 }
+                os_unfair_lock_unlock(lock)
             }
         } else {
             if keyCode == monitoredKeyCode {
-                if type == .keyDown && !isKeyHeld {
+                os_unfair_lock_lock(lock)
+                let wasHeld = isKeyHeld
+                if type == .keyDown && !wasHeld {
                     isKeyHeld = true
+                    os_unfair_lock_unlock(lock)
                     DispatchQueue.main.async { self.onKeyDown() }
                     return nil
-                } else if type == .keyUp && isKeyHeld {
+                } else if type == .keyUp && wasHeld {
                     isKeyHeld = false
+                    os_unfair_lock_unlock(lock)
                     DispatchQueue.main.async { self.onKeyUp() }
                     return nil
                 }
+                os_unfair_lock_unlock(lock)
             }
         }
 

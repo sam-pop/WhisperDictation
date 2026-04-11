@@ -288,7 +288,6 @@ private struct HotkeyRecorder: View {
                 }
             }
             .buttonStyle(.plain)
-            .onDisappear { stopRecording() }
 
             // Quick pick pills
             HStack(spacing: 6) {
@@ -317,6 +316,7 @@ private struct HotkeyRecorder: View {
                 }
             }
         }
+        .onDisappear { stopRecording() }
     }
 
     private func toggleRecording() {

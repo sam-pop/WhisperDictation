@@ -10,6 +10,13 @@ LIB_OUTPUT_DIR="$PROJECT_DIR/lib"
 
 echo "==> Building whisper.cpp static library with Metal support..."
 
+# Verify submodule is initialized
+if [ ! -f "$WHISPER_DIR/CMakeLists.txt" ]; then
+    echo "Error: whisper.cpp submodule not initialized."
+    echo "Run: git submodule update --init --recursive"
+    exit 1
+fi
+
 # Clean previous build
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$LIB_OUTPUT_DIR"

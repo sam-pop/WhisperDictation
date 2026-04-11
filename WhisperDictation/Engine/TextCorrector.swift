@@ -43,14 +43,6 @@ final class TextCorrector {
         }
 
         // Capitalize after sentence-ending punctuation
-        let sentencePattern = try! NSRegularExpression(pattern: "([.!?])\\s+([a-z])")
-        let mutable = NSMutableString(string: result)
-        sentencePattern.replaceMatches(
-            in: mutable,
-            range: NSRange(location: 0, length: mutable.length),
-            withTemplate: "$1 " // placeholder — we need a block-based approach
-        )
-        // Use a proper block-based approach for sentence caps
         result = capitalizeSentenceStarts(result)
 
         // Capitalize standalone "i"

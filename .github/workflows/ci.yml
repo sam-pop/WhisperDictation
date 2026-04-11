@@ -19,8 +19,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: lib/
-          key: whisper-cpp-${{ hashFiles('whisper.cpp/.git/HEAD') }}-macos
-          restore-keys: whisper-cpp-
+          key: whisper-cpp-${{ hashFiles('.gitmodules', 'whisper.cpp/CMakeLists.txt') }}-macos
 
       - name: Build whisper.cpp
         run: |

@@ -9,7 +9,17 @@ enum LaunchAtLoginHelper {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            print("Failed to \(enabled ? "register" : "unregister") launch at login: \(error)")
+            fputs("[LaunchAtLogin] Failed to \(enabled ? "register" : "unregister"): \(error)\n", stderr)
+            // Reconcile settings with actual state on failure
+            reconcile()
+        }
+    }
+
+    /// Sync UserDefaults with actual SMAppService status
+    static func reconcile() {
+        let actuallyEnabled = SMAppService.mainApp.status == .enabled
+        if AppSettings.shared.launchAtLogin != actuallyEnabled {
+            AppSettings.shared.launchAtLogin = actuallyEnabled
         }
     }
 }

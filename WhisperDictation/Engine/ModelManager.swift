@@ -103,6 +103,10 @@ final class ModelManager: ObservableObject {
     }
 
     func downloadModel(_ model: ModelInfo) async throws {
+        // Prevent concurrent downloads
+        let alreadyDownloading = await MainActor.run { isDownloading }
+        guard !alreadyDownloading else { return }
+
         await MainActor.run {
             isDownloading = true
             downloadProgress = 0
