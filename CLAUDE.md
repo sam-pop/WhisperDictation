@@ -15,6 +15,8 @@ make clean        # Remove build/ directory
 
 The Makefile compiles directly via `xcrun swiftc` with a bridging header — it does **not** use xcodebuild. An XcodeGen `project.yml` exists for IDE use (`xcodegen generate` to regenerate `.xcodeproj`).
 
+**When adding new .swift files**, add them to `SWIFT_FILES` in the Makefile and add the framework to `FRAMEWORKS` if needed. There is no glob — all sources are listed explicitly.
+
 ## Architecture
 
 **State machine** drives the app: `idle → recording → processing → typing → idle`
@@ -55,6 +57,11 @@ DictationEngine (@Observable, orchestrates everything)
 
 ## Gotchas
 
+- **DMG packaging**: `make dmg` handles code signing, icon generation, and plist variable substitution. Info.plist uses Xcode-style `$(EXECUTABLE_NAME)` variables that the Makefile resolves via `sed` + `PlistBuddy`. App is ad-hoc signed. Users must right-click > Open Anyway on first launch.
+- **App icon**: Generated at build time by `scripts/generate-icon.py` (compiles a Swift script using AppKit/CoreGraphics). Never use qlmanage for SVG-to-PNG — produces broken icons.
+- **Running from DMG vs /Applications**: App must be copied to /Applications. Running from mounted DMG causes Accessibility permission issues.
+- **Swift `print()` not visible in terminal**: whisper.cpp logs to stderr but Swift `print()` goes to buffered stdout. Use `fputs("...\n", stderr)` for diagnostic logs.
+- **`CharacterSet.punctuation` doesn't exist** — use `.punctuationCharacters` in Swift.
 - **Accessibility permission goes stale** when the binary is re-signed. `AXIsProcessTrusted()` returns true but the event tap receives zero events. User must toggle the permission off/on in System Settings. The watchdog timer detects and re-enables disabled taps.
 - **Never pass a custom format to `AVAudioNode.installTap`** — it throws an uncatchable NSException. Always tap with native format and convert manually.
 - **TextInjector.type() must not run on MainActor** — it uses Thread.sleep which blocks the main thread.
@@ -68,3 +75,10 @@ The app requires **Microphone** (prompted by AVAudioEngine) and **Accessibility*
 
 - `.github/workflows/ci.yml`: Builds on push/PR to main (macOS 15 runner, caches `lib/`)
 - `.github/workflows/release.yml`: On `v*` tag, builds DMG via `scripts/create-dmg.sh` and creates GitHub Release
+
+### Manual Release
+```bash
+make dmg
+git tag v1.x.x && git push origin v1.x.x
+gh release create v1.x.x build/WhisperDictation.dmg --title "WhisperDictation v1.x.x" --notes "..."
+```
