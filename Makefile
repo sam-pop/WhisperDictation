@@ -48,7 +48,12 @@ app: $(BUILD_DIR)/WhisperDictation
 	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	@mkdir -p "$(APP_BUNDLE)/Contents/Resources"
 	@cp $(BUILD_DIR)/WhisperDictation "$(APP_BUNDLE)/Contents/MacOS/"
-	@cp WhisperDictation/Info.plist "$(APP_BUNDLE)/Contents/"
+	@sed \
+		-e 's/$$(EXECUTABLE_NAME)/WhisperDictation/g' \
+		-e 's/$$(PRODUCT_BUNDLE_IDENTIFIER)/com.sampop.WhisperDictation/g' \
+		-e 's/$$(PRODUCT_NAME)/WhisperDictation/g' \
+		-e 's/$$(DEVELOPMENT_LANGUAGE)/en/g' \
+		WhisperDictation/Info.plist > "$(APP_BUNDLE)/Contents/Info.plist"
 	@echo "APPL????" > "$(APP_BUNDLE)/Contents/PkgInfo"
 	@echo "Built $(APP_BUNDLE)"
 
