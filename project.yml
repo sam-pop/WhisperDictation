@@ -1,0 +1,83 @@
+name: WhisperDictation
+options:
+  bundleIdPrefix: com.sampop
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+targets:
+  WhisperDictation:
+    type: application
+    platform: macOS
+    sources:
+      - path: WhisperDictation
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sampop.WhisperDictation
+        INFOPLIST_FILE: WhisperDictation/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WhisperDictation/WhisperDictation.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: WhisperDictation/WhisperDictation-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/lib"
+        LIBRARY_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/lib"
+        OTHER_LDFLAGS:
+          - "-lwhisper"
+          - "-lggml"
+          - "-lggml-base"
+          - "-lggml-cpu"
+          - "-lggml-metal"
+          - "-lggml-blas"
+          - "-lc++"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: false
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+    dependencies:
+      - framework: Accelerate.framework
+        implicit: true
+      - framework: Metal.framework
+        implicit: true
+      - framework: MetalKit.framework
+        implicit: true
+      - framework: AVFoundation.framework
+        implicit: true
+      - framework: CoreGraphics.framework
+        implicit: true
+      - framework: AppKit.framework
+        implicit: true
+    info:
+      path: WhisperDictation/Info.plist
+      properties:
+        LSUIElement: true
+        NSMicrophoneUsageDescription: "WhisperDictation needs microphone access to capture your voice for speech-to-text transcription."
+        NSPrincipalClass: NSApplication
+        CFBundleIconFile: ""
+    entitlements:
+      path: WhisperDictation/WhisperDictation.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+
+  WhisperDictationTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: WhisperDictationTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sampop.WhisperDictationTests
+    dependencies:
+      - target: WhisperDictation
