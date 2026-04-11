@@ -232,6 +232,8 @@ private struct GeneralSection: View {
                 CardHeader("Preferences")
                 Toggle("Auto-correct grammar & formatting", isOn: $settings.grammarCorrectionEnabled)
                     .font(.system(size: 13))
+                Toggle("Convert number words to digits", isOn: $settings.numberConversionEnabled)
+                    .font(.system(size: 13))
                 Toggle("Sound feedback", isOn: $settings.soundFeedbackEnabled)
                     .font(.system(size: 13))
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)

@@ -1,18 +1,20 @@
 <p align="center">
   <h1 align="center">WhisperDictation</h1>
   <p align="center">
-    Local, private voice-to-text for macOS.<br>
+    <strong>Free, local, and private dictation for macOS.</strong><br>
+    Open-source speech-to-text that runs entirely on your Mac. No cloud, no subscriptions.<br>
     Hold a key. Speak. Release. Your words appear at the cursor.
   </p>
   <p align="center">
+    <a href="#install-dmg">Download</a> &bull;
     <a href="#quick-start">Quick Start</a> &bull;
-    <a href="#install-dmg">Download DMG</a> &bull;
     <a href="#features">Features</a> &bull;
     <a href="#models">Models</a> &bull;
     <a href="#contributing">Contributing</a>
   </p>
   <p align="center">
     <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" alt="macOS 14+">
+    <img src="https://img.shields.io/badge/price-free-brightgreen" alt="Free">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
     <img src="https://img.shields.io/badge/powered%20by-whisper.cpp-orange" alt="whisper.cpp">
     <img src="https://img.shields.io/badge/privacy-100%25%20local-purple" alt="100% Local">
@@ -21,9 +23,14 @@
 
 ---
 
-**No cloud. No API keys. No subscriptions. No data leaves your Mac.**
+**Free. Local. Private. No cloud. No API keys. No subscriptions. No data leaves your Mac.**
 
-WhisperDictation is a free, open-source alternative to [Willow Voice](https://www.heywillow.io/) and [WisprFlow](https://wisprflow.com/). It runs OpenAI's [Whisper](https://github.com/openai/whisper) speech recognition model entirely on your machine using [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with Metal GPU acceleration.
+WhisperDictation is a **free, open-source macOS dictation app** -- a local alternative to [Willow Voice](https://www.heywillow.io/), [WisprFlow](https://wisprflow.com/), and Apple Dictation. It runs OpenAI's [Whisper](https://github.com/openai/whisper) speech recognition model entirely on your machine using [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with Metal GPU acceleration. Your voice never leaves your computer.
+
+**Why WhisperDictation?**
+- Apple's built-in dictation sends audio to Apple servers and has limited accuracy for technical terms
+- Commercial tools like Willow Voice and WisprFlow cost $8-15/month
+- WhisperDictation is **completely free**, runs **100% offline**, and is **optimized for developers** with 400+ technical terms built in
 
 ## Features
 
@@ -33,6 +40,7 @@ WhisperDictation is a free, open-source alternative to [Willow Voice](https://ww
 - **100% private** -- all audio processing happens locally. Nothing is sent to any server, ever.
 - **Developer-optimized** -- built-in vocabulary of 400+ technical terms biases Whisper toward correct recognition of API, JSON, Kubernetes, PostgreSQL, GraphQL, etc.
 - **Smart grammar correction** -- auto-capitalizes sentences, fixes 100+ acronym/term casings (api->API, javascript->JavaScript), adds punctuation
+- **Number word conversion** -- "two four six eight" becomes "2,468", "three hundred forty two" becomes "342"
 - **Multiple Whisper models** -- Base (142 MB, fastest), Small (466 MB, balanced), Medium (1.5 GB, most accurate)
 - **Configurable hotkey** -- right Option by default, rebind to any key
 - **Sound feedback** -- subtle audio cues for recording start, stop, and completion
