@@ -1,0 +1,29 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Whisper models (too large for git)
+Models/*.bin
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Build artifacts
+build/
+lib/
+*.o
+*.dylib
+whisper.cpp/build/
+
+# Environment
+.env
+.env.local

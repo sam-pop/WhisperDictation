@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: lib/
+          key: whisper-cpp-${{ hashFiles('whisper.cpp/.git/HEAD') }}-macos
+          restore-keys: whisper-cpp-
+
+      - name: Build whisper.cpp
+        run: |
+          if [ ! -f lib/libwhisper.a ]; then
+            ./scripts/build-whisper.sh
+          fi
+
+      - name: Build app
+        run: make app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhisperDictation.app
+          path: build/WhisperDictation.app
