@@ -66,9 +66,29 @@ final class HotkeyMonitor {
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        // macOS silently disables event taps when Accessibility permission
+        // is stale (binary was re-signed). Poll and re-enable if needed.
+        startTapWatchdog()
+    }
+
+    private var watchdogTimer: Timer?
+
+    private func startTapWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self, let tap = self.eventTap else { return }
+            if !CGEvent.tapIsEnabled(tap: tap) {
+                fputs("[HotkeyMonitor] Event tap was disabled by macOS! Re-enabling...\n", stderr)
+                fputs("[HotkeyMonitor] If hotkey still doesn't work, toggle Accessibility off/on in System Settings.\n", stderr)
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+        }
     }
 
     func stop() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             if let runLoopSource {
@@ -83,8 +103,15 @@ final class HotkeyMonitor {
         }
     }
 
+    private var eventCount = 0
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+        // Log first 5 events + any matching events
+        eventCount += 1
+        if eventCount <= 5 || keyCode == monitoredKeyCode {
+            fputs("[HotkeyMonitor] Event #\(eventCount) type=\(type.rawValue) keyCode=\(keyCode) monitoring=\(monitoredKeyCode) isModifier=\(isModifierKey)\n", stderr)
+        }
 
         if isModifierKey {
             if type == .flagsChanged && keyCode == monitoredKeyCode {
