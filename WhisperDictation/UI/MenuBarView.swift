@@ -44,7 +44,7 @@ struct MenuBarView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
         }
-        .frame(width: 280)
+        .frame(width: 320)
     }
 
     // MARK: - Header
@@ -69,8 +69,21 @@ struct MenuBarView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("WhisperDictation")
-                    .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 8) {
+                    Text("WhisperDictation")
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    // Model badge — short friendly name
+                    if engine.isModelLoaded {
+                        Text(modelShortName)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .tracking(0.3)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.blue.opacity(0.12)))
+                            .foregroundStyle(.blue)
+                    }
+                }
                 HStack(spacing: 6) {
                     Circle()
                         .fill(statusDotColor)
@@ -78,22 +91,11 @@ struct MenuBarView: View {
                     Text(statusText)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
 
             Spacer()
-
-            // Model badge
-            if engine.isModelLoaded {
-                Text(settings.selectedModel)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(0.3)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(.blue.opacity(0.12)))
-                    .foregroundStyle(.blue)
-            }
         }
     }
 
@@ -182,18 +184,26 @@ struct MenuBarView: View {
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    private var modelShortName: String {
+        let m = settings.selectedModel
+        // "base.en-q5_1" → "Base Q5", "small.en" → "Small"
+        let base = m.split(separator: ".").first.map(String.init) ?? m
+        let isQuantized = m.contains("q5") || m.contains("q8")
+        return base.capitalized + (isQuantized ? " Q5" : "")
+    }
+
     private var hotkeyLabel: String {
         switch settings.hotkeyKeyCode {
-        case 61: "Right ⌥"
-        case 58: "Left ⌥"
-        case 59: "Left ⌃"
-        case 62: "Right ⌃"
+        case 61: "R⌥"
+        case 58: "L⌥"
+        case 59: "L⌃"
+        case 62: "R⌃"
         case 63: "Fn"
-        case 56: "Left ⇧"
-        case 60: "Right ⇧"
-        case 55: "Left ⌘"
-        case 54: "Right ⌘"
-        default: "hotkey"
+        case 56: "L⇧"
+        case 60: "R⇧"
+        case 55: "L⌘"
+        case 54: "R⌘"
+        default: "key"
         }
     }
 }

@@ -202,6 +202,7 @@ private struct CardHeader: View {
 
 private struct GeneralSection: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var audioDevices: AudioDeviceManager = .shared
     let engine: DictationEngine
     let colorScheme: ColorScheme
 
@@ -210,6 +211,21 @@ private struct GeneralSection: View {
             SettingsCard(colorScheme: colorScheme) {
                 CardHeader("Push-to-Talk", subtitle: "Hold key to record, release to transcribe")
                 HotkeyRecorder(keyCode: $settings.hotkeyKeyCode, colorScheme: colorScheme)
+            }
+
+            SettingsCard(colorScheme: colorScheme) {
+                CardHeader("Microphone", subtitle: "Audio input device for recording")
+                Picker("Input device", selection: Binding(
+                    get: { settings.selectedAudioDeviceUID ?? "" },
+                    set: { settings.selectedAudioDeviceUID = $0.isEmpty ? nil : $0 }
+                )) {
+                    Text("System Default").tag("")
+                    ForEach(audioDevices.inputDevices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                }
+                .font(.system(size: 13))
+                .onAppear { audioDevices.refreshDevices() }
             }
 
             SettingsCard(colorScheme: colorScheme) {

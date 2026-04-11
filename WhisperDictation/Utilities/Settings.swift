@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
         case launchAtLogin
         case minimumRecordingDuration
         case grammarCorrectionEnabled
+        case selectedAudioDeviceUID
     }
 
     // MARK: - Properties
@@ -54,6 +55,12 @@ final class AppSettings: ObservableObject {
     var grammarCorrectionEnabled: Bool {
         get { defaults.object(forKey: Key.grammarCorrectionEnabled.rawValue) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.grammarCorrectionEnabled.rawValue); objectWillChange.send() }
+    }
+
+    /// nil means "use system default"
+    var selectedAudioDeviceUID: String? {
+        get { defaults.string(forKey: Key.selectedAudioDeviceUID.rawValue) }
+        set { defaults.set(newValue, forKey: Key.selectedAudioDeviceUID.rawValue); objectWillChange.send() }
     }
 
     // MARK: - Default Vocabulary Prompt
