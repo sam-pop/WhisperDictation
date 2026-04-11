@@ -1,6 +1,7 @@
 SDK := $(shell xcrun --sdk macosx --show-sdk-path)
 ARCH := $(shell uname -m)
-TARGET := $(ARCH)-apple-macos14.0
+MACOS_VER := $(shell sw_vers -productVersion | cut -d. -f1)
+TARGET := $(ARCH)-apple-macos$(MACOS_VER).0
 BUILD_DIR := build
 APP_BUNDLE := $(BUILD_DIR)/WhisperDictation.app
 
@@ -60,8 +61,8 @@ app: $(BUILD_DIR)/WhisperDictation
 		-e 's/$$(DEVELOPMENT_LANGUAGE)/en/g' \
 		WhisperDictation/Info.plist > "$(APP_BUNDLE)/Contents/Info.plist"
 	@# Add LSMinimumSystemVersion (required for macOS to recognize the app)
-	@/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 14.0" "$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || \
-		/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 14.0" "$(APP_BUNDLE)/Contents/Info.plist"
+	@/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $(MACOS_VER).0" "$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || \
+		/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $(MACOS_VER).0" "$(APP_BUNDLE)/Contents/Info.plist"
 	@echo "APPL????" > "$(APP_BUNDLE)/Contents/PkgInfo"
 	@# Generate app icon
 	@python3 scripts/generate-icon.py "$(APP_BUNDLE)/Contents/Resources" 2>/dev/null || true
