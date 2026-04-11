@@ -26,6 +26,7 @@ final class DictationEngine {
 
     init() {
         setupHotkeyMonitor()
+        hotkeyMonitor?.start()
         loadModelAsync()
     }
 

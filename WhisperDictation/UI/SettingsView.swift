@@ -59,13 +59,14 @@ private struct GeneralTab: View {
 private struct HotkeyRecorder: View {
     @Binding var keyCode: Int
     @State private var isRecording = false
+    @State private var eventMonitors: [Any] = []
 
     var body: some View {
         HStack {
             Text("Key:")
             Spacer()
 
-            Button(action: { isRecording.toggle() }) {
+            Button(action: { toggleRecording() }) {
                 Text(isRecording ? "Press any key..." : keyName(for: keyCode))
                     .frame(minWidth: 140)
                     .padding(.horizontal, 12)
@@ -78,20 +79,10 @@ private struct HotkeyRecorder: View {
                     )
             }
             .buttonStyle(.plain)
-            .onKeyPress(phases: .down) { keyPress in
-                guard isRecording else { return .ignored }
-                // Map the key press to a CGKeyCode
-                if let mapped = mapKeyPress(keyPress) {
-                    keyCode = mapped
-                    isRecording = false
-                    return .handled
-                }
-                return .ignored
-            }
         }
 
         if isRecording {
-            Text("Press the key you want to use, or click again to cancel")
+            Text("Press the key you want to use, or click the button to cancel")
                 .font(.caption)
                 .foregroundStyle(.orange)
         }
@@ -103,7 +94,7 @@ private struct HotkeyRecorder: View {
             ForEach(presetKeys, id: \.code) { preset in
                 Button(preset.name) {
                     keyCode = preset.code
-                    isRecording = false
+                    stopRecording()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -112,12 +103,53 @@ private struct HotkeyRecorder: View {
         }
     }
 
+    private func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+
+    private func startRecording() {
+        isRecording = true
+
+        // Monitor regular key presses
+        let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            keyCode = Int(event.keyCode)
+            stopRecording()
+            return nil // consume event
+        }
+
+        // Monitor modifier key presses (Option, Control, Shift, Command, Fn)
+        let flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { event in
+            let code = Int(event.keyCode)
+            // Only capture known modifier key codes
+            if [54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code) {
+                keyCode = code
+                stopRecording()
+            }
+            return nil
+        }
+
+        if let keyMonitor { eventMonitors.append(keyMonitor) }
+        if let flagsMonitor { eventMonitors.append(flagsMonitor) }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        for monitor in eventMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        eventMonitors.removeAll()
+    }
+
     private var presetKeys: [(name: String, code: Int)] {
         [
-            ("Right Option", 61),
-            ("Left Option", 58),
-            ("Right Control", 62),
-            ("Left Control", 59),
+            ("Right ⌥", 61),
+            ("Left ⌥", 58),
+            ("Right ⌃", 62),
+            ("Left ⌃", 59),
             ("Fn", 63),
         ]
     }
@@ -139,7 +171,6 @@ private struct HotkeyRecorder: View {
         case 53: return "Escape"
         case 48: return "Tab"
         default:
-            // Try to get a readable name from the key code
             if let name = keyCodeToString(code) {
                 return name
             }
@@ -161,7 +192,7 @@ private struct HotkeyRecorder: View {
             layout,
             UInt16(code),
             UInt16(kUCKeyActionDisplay),
-            0, // no modifiers
+            0,
             UInt32(LMGetKbdType()),
             UInt32(kUCKeyTranslateNoDeadKeysBit),
             &deadKeyState,
@@ -172,24 +203,6 @@ private struct HotkeyRecorder: View {
 
         guard status == noErr, length > 0 else { return nil }
         return String(utf16CodeUnits: chars, count: length).uppercased()
-    }
-
-    private func mapKeyPress(_ keyPress: KeyPress) -> Int? {
-        // Map known modifier keys by checking the key equivalents
-        // For regular keys, we need to use the hardware key scan code
-        // SwiftUI's KeyPress doesn't directly expose CGKeyCode, so
-        // we rely on the preset buttons for modifier keys and
-        // provide character-based mapping for regular keys
-        let char = keyPress.characters.lowercased()
-        let knownMappings: [String: Int] = [
-            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5,
-            "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12,
-            "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "1": 18,
-            "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "9": 25,
-            "7": 26, "8": 28, "0": 29, "o": 31, "u": 32, "i": 34,
-            "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
-        ]
-        return knownMappings[char]
     }
 }
 
