@@ -14,6 +14,7 @@ final class AppSettings: ObservableObject {
         case vocabularyPrompt
         case launchAtLogin
         case minimumRecordingDuration
+        case grammarCorrectionEnabled
     }
 
     // MARK: - Properties
@@ -48,6 +49,11 @@ final class AppSettings: ObservableObject {
     var minimumRecordingDuration: Double {
         get { defaults.object(forKey: Key.minimumRecordingDuration.rawValue) as? Double ?? 0.3 }
         set { defaults.set(newValue, forKey: Key.minimumRecordingDuration.rawValue); objectWillChange.send() }
+    }
+
+    var grammarCorrectionEnabled: Bool {
+        get { defaults.object(forKey: Key.grammarCorrectionEnabled.rawValue) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.grammarCorrectionEnabled.rawValue); objectWillChange.send() }
     }
 
     // MARK: - Default Vocabulary Prompt

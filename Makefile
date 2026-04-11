@@ -11,6 +11,7 @@ SWIFT_FILES := \
 	WhisperDictation/Engine/TextInjector.swift \
 	WhisperDictation/Engine/SoundFeedback.swift \
 	WhisperDictation/Engine/ModelManager.swift \
+	WhisperDictation/Engine/TextCorrector.swift \
 	WhisperDictation/Utilities/HotkeyMonitor.swift \
 	WhisperDictation/Utilities/PermissionManager.swift \
 	WhisperDictation/Utilities/LaunchAtLoginHelper.swift \

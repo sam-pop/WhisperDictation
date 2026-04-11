@@ -214,6 +214,8 @@ private struct GeneralSection: View {
 
             SettingsCard(colorScheme: colorScheme) {
                 CardHeader("Preferences")
+                Toggle("Auto-correct grammar & formatting", isOn: $settings.grammarCorrectionEnabled)
+                    .font(.system(size: 13))
                 Toggle("Sound feedback", isOn: $settings.soundFeedbackEnabled)
                     .font(.system(size: 13))
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)
