@@ -28,7 +28,9 @@ FRAMEWORKS := -framework Accelerate -framework Metal -framework MetalKit -framew
 
 all: whisper app
 
-whisper:
+whisper: lib/libwhisper.a
+
+lib/libwhisper.a:
 	./scripts/build-whisper.sh
 
 model:

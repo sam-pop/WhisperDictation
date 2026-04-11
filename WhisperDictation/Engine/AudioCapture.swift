@@ -45,7 +45,12 @@ final class AudioCapture {
     }
 
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let converter else {
+        // Read converter under lock to avoid race with stopRecording() nil-ing it
+        bufferLock.lock()
+        let conv = self.converter
+        bufferLock.unlock()
+
+        guard let converter = conv else {
             // No converter means formats match — use raw samples
             appendSamples(from: buffer)
             return
@@ -92,9 +97,9 @@ final class AudioCapture {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
-        converter = nil
 
         bufferLock.lock()
+        converter = nil
         let buffer = audioBuffer
         audioBuffer.removeAll()
         bufferLock.unlock()

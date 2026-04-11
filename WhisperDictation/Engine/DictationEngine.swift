@@ -31,6 +31,7 @@ final class DictationEngine {
         setupHotkeyMonitor()
         hotkeyMonitor?.start()
         loadModelAsync()
+        LaunchAtLoginHelper.reconcile()
     }
 
     // MARK: - Model Loading
