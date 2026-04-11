@@ -113,19 +113,35 @@ Click the menu bar icon > Settings to configure:
 
 ## Models
 
+### Recommended: Quantized Models (Q5)
+
+Quantized models are 2-3x smaller and faster than full precision with near-identical accuracy. **Use these.**
+
 | Model | File | Size | Speed* | Accuracy | Recommended for |
 |-------|------|------|--------|----------|-----------------|
-| Base | `ggml-base.en.bin` | 142 MB | ~0.3s | Good | Quick notes, Intel Macs, low RAM |
-| **Small** | `ggml-small.en.bin` | **466 MB** | **~0.7s** | **Better** | **Daily coding use (default)** |
-| Medium | `ggml-medium.en.bin` | 1.5 GB | ~1.5s | Best | Long-form dictation, max accuracy |
+| Base Q5 | `ggml-base.en-q5_1.bin` | 57 MB | ~0.2s | Good | Quick notes, Intel Macs |
+| **Small Q5** | **`ggml-small.en-q5_1.bin`** | **181 MB** | **~0.4s** | **Better** | **Daily coding use (default)** |
+| Medium Q5 | `ggml-medium.en-q5_0.bin` | 515 MB | ~1.0s | Best | Maximum accuracy |
 
-*Speed measured for a 5-second audio clip on Apple Silicon with Metal GPU. Intel Macs will be 2-3x slower (CPU-only).
+### Full Precision Models
 
-Download any model:
+| Model | File | Size | Speed* | Accuracy |
+|-------|------|------|--------|----------|
+| Base | `ggml-base.en.bin` | 142 MB | ~0.3s | Good |
+| Small | `ggml-small.en.bin` | 466 MB | ~0.7s | Better |
+| Medium | `ggml-medium.en.bin` | 1.5 GB | ~1.5s | Best |
+
+### Voice Activity Detection (VAD)
+
+Download the Silero VAD model (2 MB) to automatically trim silence from recordings before inference. This significantly speeds up transcription, especially for short push-to-talk clips with silence at the start/end.
+
+*Speed measured for a 5-second audio clip on Apple Silicon with Metal GPU. Intel Macs use CPU-only and will be 2-3x slower.
+
+Download models via the script or the Settings > Model tab:
 ```bash
-./scripts/download-model.sh base.en
-./scripts/download-model.sh small.en
-./scripts/download-model.sh medium.en
+./scripts/download-model.sh small.en-q5_1    # Recommended
+./scripts/download-model.sh base.en-q5_1     # Fastest
+./scripts/download-model.sh medium.en-q5_0   # Most accurate
 ```
 
 Or download directly from the Settings > Model tab in the app.
@@ -163,8 +179,12 @@ You hold a key and speak
          |
     [AVAudioConverter]      Resamples to 16kHz mono Float32
          |
+    [Silero VAD]            Trims silence from start/end (if VAD model downloaded)
+         |
     [whisper.cpp]           Runs Whisper inference (Metal GPU or CPU)
-         |                  Beam search decoding, English-only model
+         |                  Beam search (Apple Silicon) / Greedy (Intel)
+         |                  Temperature fallback for low-confidence results
+         |                  Hallucination suppression via regex
     [TextCorrector]         Fixes capitalization, acronyms, punctuation
          |
     [CGEvent]               Types text at cursor position in any app

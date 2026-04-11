@@ -3,6 +3,7 @@ import Foundation
 final class WhisperBridge: @unchecked Sendable {
     private let context: OpaquePointer
     private let queue = DispatchQueue(label: "com.whisperdictation.whisper", qos: .userInitiated)
+    private let vadModelPath: String?
 
     private static var isAppleSilicon: Bool {
         #if arch(arm64)
@@ -14,18 +15,22 @@ final class WhisperBridge: @unchecked Sendable {
 
     init(modelPath: String) throws {
         var contextParams = whisper_context_default_params()
-        // Metal GPU is fast on Apple Silicon but slow on Intel AMD GPUs
         contextParams.use_gpu = Self.isAppleSilicon
         contextParams.flash_attn = Self.isAppleSilicon
 
-        print("[WhisperBridge] Loading model: \(modelPath)")
-        print("[WhisperBridge] GPU enabled: \(Self.isAppleSilicon)")
+        fputs("[WhisperBridge] Loading model: \(modelPath)\n", stderr)
+        fputs("[WhisperBridge] GPU: \(Self.isAppleSilicon) | Arch: \(Self.isAppleSilicon ? "arm64" : "x86_64")\n", stderr)
 
         guard let ctx = whisper_init_from_file_with_params(modelPath, contextParams) else {
             throw WhisperError.modelLoadFailed(modelPath)
         }
         self.context = ctx
-        print("[WhisperBridge] Model loaded successfully")
+
+        // Check for VAD model
+        let vadPath = ModelManager.shared.vadModelPath()
+        self.vadModelPath = vadPath
+        fputs("[WhisperBridge] VAD model: \(vadPath ?? "not downloaded")\n", stderr)
+        fputs("[WhisperBridge] Model loaded successfully\n", stderr)
     }
 
     deinit {
@@ -36,28 +41,63 @@ final class WhisperBridge: @unchecked Sendable {
         queue.sync {
             let startTime = CFAbsoluteTimeGetCurrent()
 
-            var params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH)
-            params.beam_search.beam_size = 5
+            // Use beam search on Apple Silicon (fast GPU), greedy on Intel (CPU-bound)
+            var params = Self.isAppleSilicon
+                ? whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH)
+                : whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+
+            if Self.isAppleSilicon {
+                params.beam_search.beam_size = 5
+            }
+
             params.language = UnsafePointer(strdup("en"))
             params.translate = false
-            params.no_context = true
             params.single_segment = false
             params.suppress_nst = true
-            // Use more threads on Intel since we're CPU-only there
+
+            // Use previous transcription context for better multi-sentence accuracy
+            params.no_context = false
+
+            // Temperature fallback: start at 0 (deterministic), increment on failure
+            params.temperature = 0.0
+            params.temperature_inc = 0.2
+
+            // Fallback thresholds
+            params.entropy_thold = 2.4
+            params.logprob_thold = -1.0
+            params.no_speech_thold = 0.6
+
+            // Thread count: use all cores on Intel, reserve 2 for GPU on Apple Silicon
             let threadCount = Self.isAppleSilicon
                 ? max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
                 : max(1, ProcessInfo.processInfo.activeProcessorCount)
             params.n_threads = Int32(threadCount)
 
+            // Suppress common Whisper hallucinations on silence/noise
+            let suppressRegex = strdup("(Thank you|Thanks for watching|Please subscribe|you)")
+            params.suppress_regex = UnsafePointer(suppressRegex)
+
+            // VAD: trim silence before inference (major speed boost)
+            var vadPathCStr: UnsafeMutablePointer<CChar>?
+            if let vadPath = self.vadModelPath {
+                params.vad = true
+                vadPathCStr = strdup(vadPath)
+                params.vad_model_path = UnsafePointer(vadPathCStr)
+            }
+
+            // Vocabulary prompt
             let promptCString = prompt.isEmpty ? nil : strdup(prompt)
             params.initial_prompt = promptCString.map { UnsafePointer($0) }
 
             defer {
                 if let lang = params.language { free(UnsafeMutablePointer(mutating: lang)) }
                 if let p = promptCString { free(p) }
+                if let s = suppressRegex { free(s) }
+                if let v = vadPathCStr { free(v) }
             }
 
-            print("[WhisperBridge] Transcribing \(audioBuffer.count) samples (\(String(format: "%.1f", Double(audioBuffer.count) / 16000.0))s audio) with \(threadCount) threads...")
+            let audioDuration = Double(audioBuffer.count) / 16000.0
+            fputs("[WhisperBridge] Transcribing \(String(format: "%.1f", audioDuration))s audio | \(threadCount) threads | VAD: \(params.vad)\n", stderr)
 
             let result = audioBuffer.withUnsafeBufferPointer { bufferPtr in
                 whisper_full(context, params, bufferPtr.baseAddress, Int32(audioBuffer.count))
@@ -66,7 +106,7 @@ final class WhisperBridge: @unchecked Sendable {
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
             guard result == 0 else {
-                print("[WhisperBridge] whisper_full failed with code \(result) in \(String(format: "%.2f", elapsed))s")
+                fputs("[WhisperBridge] whisper_full failed with code \(result) in \(String(format: "%.2f", elapsed))s\n", stderr)
                 return ""
             }
 
@@ -80,7 +120,7 @@ final class WhisperBridge: @unchecked Sendable {
             }
 
             let trimmed = transcription.trimmingCharacters(in: .whitespacesAndNewlines)
-            print("[WhisperBridge] Result (\(String(format: "%.2f", elapsed))s): \"\(trimmed)\"")
+            fputs("[WhisperBridge] Result (\(String(format: "%.2f", elapsed))s): \"\(trimmed)\"\n", stderr)
             return trimmed
         }
     }
