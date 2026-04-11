@@ -16,8 +16,11 @@ final class AudioCapture {
 
     func startRecording() throws {
         let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
 
+        // Apply selected audio input device if set
+        AudioDeviceManager.shared.applySelectedDevice(to: engine)
+
+        let inputNode = engine.inputNode
         engine.prepare()
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
