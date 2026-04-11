@@ -10,7 +10,7 @@ xcuserdata/
 *.perspectivev3
 
 # Whisper models (too large for git)
-Models/*.bin
+Models/
 
 # macOS
 .DS_Store

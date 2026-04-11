@@ -13,6 +13,7 @@ SWIFT_FILES := \
 	WhisperDictation/Engine/ModelManager.swift \
 	WhisperDictation/Utilities/HotkeyMonitor.swift \
 	WhisperDictation/Utilities/PermissionManager.swift \
+	WhisperDictation/Utilities/LaunchAtLoginHelper.swift \
 	WhisperDictation/Engine/DictationEngine.swift \
 	WhisperDictation/UI/MenuBarView.swift \
 	WhisperDictation/UI/SettingsView.swift \
@@ -20,7 +21,7 @@ SWIFT_FILES := \
 	WhisperDictation/App/WhisperDictationApp.swift
 
 LIBS := -lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lggml-blas -lc++
-FRAMEWORKS := -framework Accelerate -framework Metal -framework MetalKit -framework AVFoundation -framework CoreGraphics -framework AppKit -framework Foundation
+FRAMEWORKS := -framework Accelerate -framework Metal -framework MetalKit -framework AVFoundation -framework CoreGraphics -framework AppKit -framework Foundation -framework ServiceManagement
 
 .PHONY: all clean whisper model app run
 
