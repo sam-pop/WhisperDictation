@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     let engine: DictationEngine
     @ObservedObject private var permissions = PermissionManager.shared
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -10,8 +11,9 @@ struct MenuBarView: View {
             Divider()
             controlsSection
             Divider()
-            SettingsLink {
-                Text("Settings...")
+            Button("Settings...") {
+                openWindow(id: "settings")
+                NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(",")
             Button("Quit WhisperDictation") {

@@ -11,9 +11,11 @@ struct WhisperDictationApp: App {
             MenuBarIcon(state: engine.state)
         }
 
-        Settings {
+        Window("WhisperDictation Settings", id: "settings") {
             SettingsView(engine: engine)
         }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
 
