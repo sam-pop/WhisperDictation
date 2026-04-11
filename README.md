@@ -43,6 +43,14 @@ WhisperDictation is a free, open-source alternative to [Willow Voice](https://ww
 
 Download the latest `.dmg` from [Releases](https://github.com/sam-pop/WhisperDictation/releases), open it, and drag WhisperDictation to Applications.
 
+> **Note: The app is not notarized by Apple.** macOS will block it on first launch. To open it on Mac:
+> 1. Open WhisperDictation -- macOS will show a warning that it can't verify the developer
+> 2. Go to **System Settings > Privacy & Security**
+> 3. Scroll down and click **Open Anyway** next to the WhisperDictation message
+> 4. Click **Open** in the confirmation dialog
+>
+> You only need to do this once. After that, the app opens normally.
+
 Or build from source:
 
 ```bash
