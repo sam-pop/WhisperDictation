@@ -10,9 +10,8 @@ struct MenuBarView: View {
             Divider()
             controlsSection
             Divider()
-            Button("Settings...") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
+            SettingsLink {
+                Text("Settings...")
             }
             .keyboardShortcut(",")
             Button("Quit WhisperDictation") {
