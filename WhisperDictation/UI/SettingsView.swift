@@ -400,74 +400,64 @@ private struct ModelSection: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            ForEach(ModelManager.ModelInfo.all, id: \.fileName) { model in
-                let isSelected = isModelSelected(model)
-                let isDownloaded = modelManager.isModelDownloaded(model)
+            // Recommended quantized models
+            CardHeader("Recommended (Quantized)", subtitle: "Smaller, faster, near-identical accuracy")
 
-                SettingsCard(colorScheme: colorScheme) {
-                    HStack(spacing: 14) {
-                        // Model tier indicator
-                        ZStack {
-                            Circle()
-                                .fill(tierGradient(for: model))
-                                .frame(width: 36, height: 36)
-                            Text(tierEmoji(for: model))
-                                .font(.system(size: 16))
-                        }
+            ForEach(ModelManager.ModelInfo.recommended) { model in
+                modelCard(model)
+            }
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 8) {
-                                Text(model.name)
-                                    .font(.system(size: 13, weight: .semibold))
-                                if isSelected {
-                                    Text("ACTIVE")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .tracking(0.5)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Capsule().fill(.green.opacity(0.15)))
-                                        .foregroundStyle(.green)
-                                }
-                            }
-                            HStack(spacing: 12) {
-                                Label(model.size, systemImage: "internaldrive")
-                                Label(tierSpeed(for: model), systemImage: "bolt.fill")
-                            }
+            // VAD model
+            CardHeader("Voice Activity Detection", subtitle: "Trims silence for faster inference (2 MB)")
+
+            let vadDownloaded = modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+            SettingsCard(colorScheme: colorScheme) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [.cyan.opacity(0.7), .cyan.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "waveform.path")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Silero VAD")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Auto-trims silence before transcription")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if vadDownloaded {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.system(size: 18))
+                    } else if modelManager.isDownloading {
+                        ProgressView(value: modelManager.downloadProgress)
+                            .frame(width: 60)
+                    } else {
+                        Button("Download") {
+                            Task { try? await modelManager.downloadModel(.vadSilero) }
                         }
-
-                        Spacer()
-
-                        if isDownloaded {
-                            if !isSelected {
-                                Button("Activate") {
-                                    let name = model.fileName
-                                        .replacingOccurrences(of: "ggml-", with: "")
-                                        .replacingOccurrences(of: ".bin", with: "")
-                                    settings.selectedModel = name
-                                    engine.reloadModel()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .tint(.blue)
-                            } else {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                    .font(.system(size: 18))
-                            }
-                        } else if modelManager.isDownloading {
-                            ProgressView(value: modelManager.downloadProgress)
-                                .frame(width: 60)
-                        } else {
-                            Button("Download") {
-                                Task { try? await modelManager.downloadModel(model) }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                 }
+            }
+
+            // Full precision models (collapsible)
+            DisclosureGroup {
+                VStack(spacing: 10) {
+                    ForEach([ModelManager.ModelInfo.baseEn, .smallEn, .mediumEn]) { model in
+                        modelCard(model)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Full Precision Models")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
 
             if let error = modelManager.downloadError {
@@ -477,6 +467,86 @@ private struct ModelSection: View {
                     Text(error)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func modelCard(_ model: ModelManager.ModelInfo) -> some View {
+        let isSelected = isModelSelected(model)
+        let isDownloaded = modelManager.isModelDownloaded(model)
+
+        SettingsCard(colorScheme: colorScheme) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(tierGradient(for: model))
+                        .frame(width: 36, height: 36)
+                    Text(tierEmoji(for: model))
+                        .font(.system(size: 16))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(model.name)
+                            .font(.system(size: 13, weight: .semibold))
+                        if model.isQuantized {
+                            Text("Q5")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(0.3)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(.orange.opacity(0.15)))
+                                .foregroundStyle(.orange)
+                        }
+                        if isSelected {
+                            Text("ACTIVE")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(0.5)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(.green.opacity(0.15)))
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    HStack(spacing: 12) {
+                        Label(model.size, systemImage: "internaldrive")
+                        Label(model.speed, systemImage: "bolt.fill")
+                        Label(model.accuracy, systemImage: "target")
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if isDownloaded {
+                    if !isSelected {
+                        Button("Activate") {
+                            let name = model.fileName
+                                .replacingOccurrences(of: "ggml-", with: "")
+                                .replacingOccurrences(of: ".bin", with: "")
+                            settings.selectedModel = name
+                            engine.reloadModel()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(.blue)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.system(size: 18))
+                    }
+                } else if modelManager.isDownloading {
+                    ProgressView(value: modelManager.downloadProgress)
+                        .frame(width: 60)
+                } else {
+                    Button("Download") {
+                        Task { try? await modelManager.downloadModel(model) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         }
