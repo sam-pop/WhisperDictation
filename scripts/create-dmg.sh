@@ -21,6 +21,10 @@ rm -f "$DMG_OUTPUT"
 # Create a temporary directory for DMG contents
 TMP_DIR=$(mktemp -d)
 cp -R "$APP_BUNDLE" "$TMP_DIR/"
+
+# Remove quarantine attribute so the icon shows correctly in the DMG
+xattr -cr "$TMP_DIR/WhisperDictation.app" 2>/dev/null || true
+
 ln -s /Applications "$TMP_DIR/Applications"
 
 echo "==> Creating DMG..."
