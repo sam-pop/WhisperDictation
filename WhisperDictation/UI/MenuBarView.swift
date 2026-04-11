@@ -3,101 +3,272 @@ import SwiftUI
 struct MenuBarView: View {
     let engine: DictationEngine
     @ObservedObject private var permissions = PermissionManager.shared
+    @ObservedObject private var settings = AppSettings.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            statusSection
-            Divider()
-            controlsSection
-            Divider()
-            Button("Settings...") {
-                openWindow(id: "settings")
-                NSApp.activate(ignoringOtherApps: true)
+        VStack(spacing: 0) {
+            // Header with status
+            headerSection
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+            // Alerts (permissions / errors)
+            if !permissions.allPermissionsGranted || engine.modelLoadError != nil {
+                alertsSection
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
             }
-            .keyboardShortcut(",")
-            Button("Quit WhisperDictation") {
-                NSApplication.shared.terminate(nil)
+
+            // Last transcription
+            if !engine.lastTranscription.isEmpty {
+                transcriptionSection
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
             }
-            .keyboardShortcut("q")
+
+            Divider()
+                .padding(.horizontal, 12)
+
+            // Actions
+            VStack(spacing: 2) {
+                MenuButton(title: "Settings...", icon: "gearshape", shortcut: ",") {
+                    openWindow(id: "settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                MenuButton(title: "Quit WhisperDictation", icon: "power", shortcut: "Q") {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
-        .padding(.vertical, 4)
+        .frame(width: 280)
     }
 
-    @ViewBuilder
-    private var statusSection: some View {
-        HStack {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-            Text(statusText)
-                .font(.headline)
-        }
-        .padding(.horizontal, 8)
+    // MARK: - Header
 
-        if !engine.isModelLoaded {
+    private var headerSection: some View {
+        HStack(spacing: 12) {
+            // Status orb
+            ZStack {
+                Circle()
+                    .fill(statusGradient)
+                    .frame(width: 36, height: 36)
+
+                if engine.state == .recording {
+                    Circle()
+                        .stroke(Color.red.opacity(0.4), lineWidth: 2)
+                        .frame(width: 44, height: 44)
+                }
+
+                Image(systemName: statusIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("WhisperDictation")
+                    .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusDotColor)
+                        .frame(width: 6, height: 6)
+                    Text(statusText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Model badge
+            if engine.isModelLoaded {
+                Text(settings.selectedModel)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(0.3)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(.blue.opacity(0.12)))
+                    .foregroundStyle(.blue)
+            }
+        }
+    }
+
+    // MARK: - Alerts
+
+    private var alertsSection: some View {
+        VStack(spacing: 6) {
+            if !permissions.microphoneGranted {
+                AlertRow(icon: "mic.slash.fill", text: "Microphone access needed", color: .orange) {
+                    permissions.requestMicrophone()
+                }
+            }
+            if !permissions.accessibilityGranted {
+                AlertRow(icon: "hand.raised.fill", text: "Accessibility access needed", color: .orange) {
+                    permissions.openAccessibilitySettings()
+                }
+            }
             if let error = engine.modelLoadError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 8)
-            } else {
-                Text("Loading model...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
+                AlertRow(icon: "exclamationmark.triangle.fill", text: error, color: .red) {
+                    openWindow(id: "settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
             }
-        }
-
-        if !permissions.allPermissionsGranted {
-            Text("Permissions needed")
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .padding(.horizontal, 8)
         }
     }
 
-    @ViewBuilder
-    private var controlsSection: some View {
-        if !permissions.microphoneGranted {
-            Button("Grant Microphone Access") {
-                permissions.requestMicrophone()
-            }
-        }
-        if !permissions.accessibilityGranted {
-            Button("Open Accessibility Settings") {
-                permissions.openAccessibilitySettings()
-            }
-        }
+    // MARK: - Last Transcription
 
-        if let lastText = engine.lastTranscription.isEmpty ? nil : engine.lastTranscription {
-            Text("Last: \(lastText)")
-                .font(.caption)
+    private var transcriptionSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Last transcription")
+                .font(.system(size: 9, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(0.3)
+                .foregroundStyle(.tertiary)
+
+            Text(engine.lastTranscription)
+                .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .padding(.horizontal, 8)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.quaternary.opacity(0.5))
+                )
+        }
+    }
+
+    // MARK: - Status Helpers
+
+    private var statusIcon: String {
+        switch engine.state {
+        case .idle: "waveform"
+        case .recording: "mic.fill"
+        case .processing: "brain.head.profile.fill"
+        case .typing: "text.cursor"
         }
     }
 
     private var statusText: String {
         switch engine.state {
-        case .idle:
-            engine.isModelLoaded ? "Ready" : "Loading..."
-        case .recording:
-            "Recording..."
-        case .processing:
-            "Transcribing..."
-        case .typing:
-            "Typing..."
+        case .idle: engine.isModelLoaded ? "Ready — hold \(hotkeyLabel) to dictate" : "Loading model..."
+        case .recording: "Listening..."
+        case .processing: "Transcribing..."
+        case .typing: "Typing..."
         }
     }
 
-    private var statusColor: Color {
+    private var statusDotColor: Color {
         switch engine.state {
-        case .idle: .green
+        case .idle: engine.isModelLoaded ? .green : .orange
         case .recording: .red
         case .processing: .orange
         case .typing: .blue
         }
+    }
+
+    private var statusGradient: LinearGradient {
+        let colors: [Color] = switch engine.state {
+        case .idle: [.green.opacity(0.8), .green.opacity(0.5)]
+        case .recording: [.red.opacity(0.9), .red.opacity(0.6)]
+        case .processing: [.orange.opacity(0.8), .orange.opacity(0.5)]
+        case .typing: [.blue.opacity(0.8), .blue.opacity(0.5)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    private var hotkeyLabel: String {
+        switch settings.hotkeyKeyCode {
+        case 61: "Right ⌥"
+        case 58: "Left ⌥"
+        case 59: "Left ⌃"
+        case 62: "Right ⌃"
+        case 63: "Fn"
+        case 56: "Left ⇧"
+        case 60: "Right ⇧"
+        case 55: "Left ⌘"
+        case 54: "Right ⌘"
+        default: "hotkey"
+        }
+    }
+}
+
+// MARK: - Alert Row
+
+private struct AlertRow: View {
+    let icon: String
+    let text: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundStyle(color)
+                Text(text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.quaternary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(color.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Menu Button
+
+private struct MenuButton: View {
+    let title: String
+    let icon: String
+    let shortcut: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                Text(title)
+                    .font(.system(size: 13))
+                Spacer()
+                Text("⌘\(shortcut)")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(MenuButtonStyle())
+    }
+}
+
+private struct MenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(configuration.isPressed ? Color.blue.opacity(0.8) : Color.clear)
+            )
+            .foregroundStyle(configuration.isPressed ? .white : .primary)
     }
 }

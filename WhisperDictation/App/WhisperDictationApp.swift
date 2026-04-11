@@ -10,6 +10,7 @@ struct WhisperDictationApp: App {
         } label: {
             MenuBarIcon(state: engine.state)
         }
+        .menuBarExtraStyle(.window)
 
         Window("WhisperDictation Settings", id: "settings") {
             SettingsView(engine: engine)
@@ -25,17 +26,17 @@ struct MenuBarIcon: View {
     var body: some View {
         switch state {
         case .idle:
-            Image(systemName: "mic.fill")
+            Image(systemName: "waveform.badge.mic")
         case .recording:
-            Image(systemName: "mic.fill")
+            Image(systemName: "mic.circle.fill")
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(.red)
+                .foregroundStyle(.white, .red)
         case .processing:
-            Image(systemName: "waveform")
+            Image(systemName: "brain.head.profile.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.orange)
         case .typing:
-            Image(systemName: "keyboard")
+            Image(systemName: "text.cursor")
         }
     }
 }
