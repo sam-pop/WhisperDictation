@@ -4,6 +4,7 @@ import CoreGraphics
 final class HotkeyMonitor {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var retainedSelfPtr: UnsafeMutableRawPointer?
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
 
@@ -11,7 +12,6 @@ final class HotkeyMonitor {
         CGKeyCode(AppSettings.shared.hotkeyKeyCode)
     }
 
-    /// Whether the monitored key is a modifier (Option, Control, Shift, Command, Fn, Caps Lock)
     private var isModifierKey: Bool {
         let code = Int(monitoredKeyCode)
         return [54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code)
@@ -56,6 +56,8 @@ final class HotkeyMonitor {
             return
         }
 
+        retainedSelfPtr = selfPtr
+
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -70,13 +72,16 @@ final class HotkeyMonitor {
             self.eventTap = nil
             self.runLoopSource = nil
         }
+        if let ptr = retainedSelfPtr {
+            Unmanaged<HotkeyMonitor>.fromOpaque(ptr).release()
+            retainedSelfPtr = nil
+        }
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         if isModifierKey {
-            // Modifier keys use flagsChanged events
             if type == .flagsChanged && keyCode == monitoredKeyCode {
                 let flags = event.flags
                 let isPressed = isModifierPressed(flags)
@@ -91,7 +96,6 @@ final class HotkeyMonitor {
                 }
             }
         } else {
-            // Regular keys use keyDown/keyUp events
             if keyCode == monitoredKeyCode {
                 if type == .keyDown && !isKeyHeld {
                     isKeyHeld = true
@@ -111,12 +115,12 @@ final class HotkeyMonitor {
     private func isModifierPressed(_ flags: CGEventFlags) -> Bool {
         let code = Int(monitoredKeyCode)
         switch code {
-        case 58, 61: return flags.contains(.maskAlternate)   // Option keys
-        case 59, 62: return flags.contains(.maskControl)     // Control keys
-        case 56, 60: return flags.contains(.maskShift)       // Shift keys
-        case 54, 55: return flags.contains(.maskCommand)     // Command keys
-        case 57:     return flags.contains(.maskAlphaShift)  // Caps Lock
-        case 63:     return flags.contains(.maskSecondaryFn) // Fn
+        case 58, 61: return flags.contains(.maskAlternate)
+        case 59, 62: return flags.contains(.maskControl)
+        case 56, 60: return flags.contains(.maskShift)
+        case 54, 55: return flags.contains(.maskCommand)
+        case 57:     return flags.contains(.maskAlphaShift)
+        case 63:     return flags.contains(.maskSecondaryFn)
         default:     return false
         }
     }

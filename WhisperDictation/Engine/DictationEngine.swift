@@ -120,25 +120,33 @@ final class DictationEngine {
 
         let bridge = self.whisperBridge
         let prompt = AppSettings.shared.vocabularyPrompt
+        let injector = self.textInjector
+        let feedback = self.soundFeedback
+
         Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self, let bridge else {
+            guard let bridge else {
                 await MainActor.run { [weak self] in self?.state = .idle }
                 return
             }
 
             let text = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt)
 
-            await MainActor.run { [weak self] in
-                guard let self, !text.isEmpty else {
-                    self?.state = .idle
-                    return
-                }
+            guard !text.isEmpty else {
+                await MainActor.run { [weak self] in self?.state = .idle }
+                return
+            }
 
-                self.lastTranscription = text
-                self.state = .typing
-                self.textInjector.type(text: text)
-                self.soundFeedback.playDoneSound()
-                self.state = .idle
+            await MainActor.run { [weak self] in
+                self?.lastTranscription = text
+                self?.state = .typing
+            }
+
+            // Type text on a background thread to avoid blocking the main thread
+            injector.type(text: text)
+            feedback.playDoneSound()
+
+            await MainActor.run { [weak self] in
+                self?.state = .idle
             }
         }
     }

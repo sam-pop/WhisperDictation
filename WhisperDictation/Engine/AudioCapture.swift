@@ -16,20 +16,26 @@ final class AudioCapture {
     func startRecording() throws {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+
+        // Prepare engine first so hardware format is settled
+        engine.prepare()
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         bufferLock.lock()
         audioBuffer.removeAll()
         bufferLock.unlock()
 
-        // Install a tap that converts to 16kHz mono Float32
         let converter = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
+
+        guard converter != nil || inputFormat == Self.desiredFormat else {
+            throw AudioCaptureError.formatConversionFailed
+        }
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
 
             if let converter {
-                // Convert to 16kHz mono
                 let ratio = Self.sampleRate / inputFormat.sampleRate
                 let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
                 guard let convertedBuffer = AVAudioPCMBuffer(
@@ -59,7 +65,6 @@ final class AudioCapture {
                     self.bufferLock.unlock()
                 }
             } else {
-                // Input is already the right format
                 if let floatData = buffer.floatChannelData {
                     let samples = Array(UnsafeBufferPointer(
                         start: floatData[0],
@@ -72,7 +77,6 @@ final class AudioCapture {
             }
         }
 
-        engine.prepare()
         try engine.start()
         self.audioEngine = engine
     }
@@ -92,5 +96,16 @@ final class AudioCapture {
 
     var isRecording: Bool {
         audioEngine?.isRunning ?? false
+    }
+}
+
+enum AudioCaptureError: LocalizedError {
+    case formatConversionFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .formatConversionFailed:
+            return "Could not create audio format converter for the current input device."
+        }
     }
 }

@@ -47,6 +47,9 @@ private struct GeneralTab: View {
 
             Section("System") {
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)
+                    .onChange(of: settings.launchAtLogin) { _, newValue in
+                        LaunchAtLoginHelper.setEnabled(newValue)
+                    }
             }
         }
         .formStyle(.grouped)
@@ -79,6 +82,7 @@ private struct HotkeyRecorder: View {
                     )
             }
             .buttonStyle(.plain)
+            .onDisappear { stopRecording() }
         }
 
         if isRecording {

@@ -2,27 +2,28 @@
 # Download Whisper model from Hugging Face
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-MODELS_DIR="$PROJECT_DIR/Models"
 MODEL_NAME="${1:-small.en}"
 MODEL_FILE="ggml-${MODEL_NAME}.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}"
 
-mkdir -p "$MODELS_DIR"
+# App stores models in Application Support
+APP_SUPPORT_DIR="$HOME/Library/Application Support/WhisperDictation/Models"
+mkdir -p "$APP_SUPPORT_DIR"
 
-if [ -f "$MODELS_DIR/$MODEL_FILE" ]; then
-    echo "Model already exists: $MODELS_DIR/$MODEL_FILE"
+DEST="$APP_SUPPORT_DIR/$MODEL_FILE"
+
+if [ -f "$DEST" ]; then
+    echo "Model already exists: $DEST"
     exit 0
 fi
 
 echo "==> Downloading $MODEL_FILE..."
 echo "    URL: $MODEL_URL"
-echo "    Destination: $MODELS_DIR/$MODEL_FILE"
+echo "    Destination: $DEST"
 echo ""
 
-curl -L --progress-bar -o "$MODELS_DIR/$MODEL_FILE" "$MODEL_URL"
+curl -L --progress-bar -o "$DEST" "$MODEL_URL"
 
-SIZE=$(ls -lh "$MODELS_DIR/$MODEL_FILE" | awk '{print $5}')
+SIZE=$(ls -lh "$DEST" | awk '{print $5}')
 echo ""
-echo "==> Downloaded $MODEL_FILE ($SIZE)"
+echo "==> Downloaded $MODEL_FILE ($SIZE) to $DEST"
