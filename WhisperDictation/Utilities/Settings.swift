@@ -71,52 +71,73 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
     // MARK: - Default Vocabulary Prompt
 
-    // ~250 words — stays under whisper's 1024 token limit
+    // ~500 words — under whisper's 1024 token (~750 word) limit
     static let defaultVocabularyPrompt = """
         Technical software engineering discussion. \
         Languages: JavaScript, TypeScript, Python, Swift, SwiftUI, Rust, Go, Golang, \
-        Java, Kotlin, C++, Ruby, PHP, Dart, Haskell, Elixir, Objective-C, C#. \
-        Frameworks: React, Next.js, Vue, Angular, Svelte, Express, Django, Flask, \
-        FastAPI, NestJS, Tailwind, Bootstrap, Spring Boot, Rails, Laravel. \
+        Java, Kotlin, C++, C#, F#, Ruby, PHP, Dart, Scala, Haskell, Elixir, Clojure, \
+        Zig, Lua, Objective-C, Perl, COBOL, Fortran, Assembly, WASM, WebAssembly. \
+        Frameworks: React, Next.js, Vue, Nuxt, Angular, Svelte, SvelteKit, Remix, \
+        Astro, Gatsby, Express, Django, Flask, FastAPI, NestJS, Spring Boot, Rails, \
+        Laravel, ASP.NET, Gin, Echo, Fiber, Actix, Rocket, Phoenix, Tailwind, \
+        Bootstrap, Material UI, Chakra UI, shadcn, Radix, Headless UI, Storybook. \
         Infrastructure: Docker, Kubernetes, AWS, GCP, Azure, Terraform, Ansible, \
-        Nginx, Cloudflare, Vercel, Netlify, Heroku, Lambda, EC2, S3, ECS, EKS, \
-        Cloud Run, Cloud Functions. \
+        Pulumi, Nginx, Apache, Caddy, Cloudflare, Vercel, Netlify, Heroku, Railway, \
+        Fly.io, Render, Lambda, EC2, S3, CloudFront, ECS, EKS, Fargate, RDS, \
+        DynamoDB, SQS, SNS, IAM, VPC, Cloud Run, Cloud Functions, BigQuery. \
         Databases: PostgreSQL, MySQL, SQLite, MongoDB, Redis, Elasticsearch, \
-        DynamoDB, Firestore, Firebase, Supabase, Prisma, Drizzle. \
-        APIs: REST, GraphQL, gRPC, WebSocket, tRPC, OpenAPI, JSON, YAML, XML, \
-        protobuf, JWT, OAuth, CORS, CSRF, webhook, endpoint, middleware. \
-        DevOps: Git, GitHub, GitLab, CI/CD, GitHub Actions, Jenkins, Helm, \
-        Prometheus, Grafana, Datadog, Sentry. \
-        Tools: npm, yarn, pnpm, Bun, Deno, Node.js, Webpack, Vite, esbuild, \
-        ESLint, Prettier, Cargo, pip, Poetry, CocoaPods, homebrew. \
-        Frontend: tooltip, dropdown, popover, modal, sidebar, navbar, breadcrumb, \
-        carousel, accordion, checkbox, toggle, slider, pagination, skeleton, \
+        Cassandra, DynamoDB, Firestore, Firebase, Supabase, PlanetScale, Neon, \
+        CockroachDB, Prisma, Drizzle, Sequelize, TypeORM, Mongoose, SQLAlchemy, \
+        Knex, Kysely, EdgeDB, SurrealDB, Turso, Upstash. \
+        APIs: REST, GraphQL, gRPC, WebSocket, tRPC, OpenAPI, Swagger, Postman, \
+        JSON, YAML, XML, protobuf, JWT, OAuth, SAML, CORS, CSRF, webhook, \
+        endpoint, middleware, rate limiting, pagination, cursor, offset, idempotent. \
+        DevOps: Git, GitHub, GitLab, Bitbucket, CI/CD, GitHub Actions, Jenkins, \
+        CircleCI, ArgoCD, Helm, kubectl, Prometheus, Grafana, Datadog, Sentry, \
+        PagerDuty, container, pod, replica set, deployment, ingress, namespace, \
+        artifact, staging, production, canary, blue-green, rollback, hotfix, \
+        feature flag, environment variable, secret, load balancer, reverse proxy, \
+        API gateway, service mesh, uptime, latency, throughput, SLA, SLO, SLI. \
+        Tools: npm, yarn, pnpm, Bun, Deno, Node.js, Webpack, Vite, Rollup, \
+        esbuild, SWC, Babel, ESLint, Prettier, Biome, Cargo, pip, Poetry, uv, \
+        CocoaPods, Swift Package Manager, Gradle, Maven, homebrew, apt, Turborepo, \
+        Nx, Lerna, Changesets, Husky, lint-staged, commitlint. \
+        Frontend: tooltip, dropdown, popover, modal, dialog, sidebar, navbar, \
+        breadcrumb, carousel, accordion, checkbox, toggle, slider, pagination, \
+        skeleton, spinner, toast, snackbar, avatar, badge, chip, tag, tabs, \
         responsive, viewport, breakpoint, flexbox, grid, z-index, opacity, \
         hover, focus, blur, onClick, onChange, onSubmit, useState, useEffect, \
+        useRef, useMemo, useCallback, useContext, useReducer, custom hook, \
         SSR, SSG, ISR, hydration, lazy loading, code splitting, tree shaking, \
         bundler, minify, transpile, polyfill, CSS-in-JS, styled-components, \
         SVG, canvas, WebGL, animation, transition, keyframe, media query, \
         accessibility, ARIA, screen reader, semantic HTML, SEO, meta tags, \
-        localStorage, sessionStorage, IndexedDB, service worker, PWA. \
-        Backend: middleware, controller, route, handler, resolver, schema, \
-        migration, seed, ORM, query builder, connection pool, transaction, \
-        caching, rate limiting, pagination, cursor, offset, webhook, \
-        authentication, authorization, session, cookie, token, RBAC, \
-        cron job, queue, worker, pub/sub, event-driven, message broker, \
-        logging, monitoring, tracing, health check, graceful shutdown. \
-        DevOps: container, pod, replica set, deployment, ingress, namespace, \
-        CI/CD pipeline, artifact, staging, production, canary, blue-green, \
-        rollback, hotfix, feature flag, environment variable, secret, \
-        load balancer, reverse proxy, API gateway, service mesh, \
-        uptime, latency, throughput, SLA, SLO, incident, postmortem. \
-        Concepts: API, SDK, CLI, IDE, async, await, promise, callback, \
-        closure, mutex, thread, microservice, serverless, CDN, \
-        HTTP, HTTPS, TCP, UDP, DNS, SSL, TLS, SSH, \
-        pull request, merge, rebase, commit, branch, deploy, refactor, \
-        unit test, integration test, TDD, mock, coverage, \
-        function, class, struct, enum, protocol, interface, component, module. \
-        AI: LLM, GPT, Claude, OpenAI, Anthropic, Hugging Face, \
-        PyTorch, TensorFlow, MLX, Whisper, RAG, embedding, inference, \
-        Xcode, VS Code, IntelliJ, Vim, Neovim, terminal, bash, zsh.
+        localStorage, sessionStorage, IndexedDB, service worker, PWA, \
+        dark mode, light mode, theme, design system, design tokens, Figma. \
+        Backend: controller, route, handler, resolver, schema, migration, seed, \
+        ORM, query builder, connection pool, transaction, caching, Redis cache, \
+        authentication, authorization, session, cookie, token, RBAC, ACL, SSO, MFA, \
+        cron job, queue, worker, pub/sub, event-driven, message broker, RabbitMQ, \
+        Kafka, NATS, logging, monitoring, tracing, OpenTelemetry, health check, \
+        graceful shutdown, retry, circuit breaker, backoff, dead letter queue. \
+        Concepts: API, SDK, CLI, IDE, async, await, promise, callback, closure, \
+        mutex, semaphore, thread, coroutine, actor, channel, stream, observable, \
+        microservice, monolith, serverless, edge function, CDN, \
+        HTTP, HTTPS, TCP, UDP, DNS, SSL, TLS, SSH, SMTP, FTP, \
+        pull request, merge, rebase, cherry-pick, squash, commit, branch, tag, \
+        unit test, integration test, end-to-end test, TDD, BDD, mock, stub, spy, \
+        snapshot test, regression, coverage, assertion, fixture, \
+        function, class, struct, enum, protocol, interface, component, module, \
+        generic, template, trait, mixin, decorator, annotation, abstract, \
+        singleton, factory, observer, strategy, adapter, facade, proxy, \
+        big O, algorithm, data structure, hash map, linked list, binary tree, \
+        recursion, memoization, dynamic programming, sorting, searching. \
+        AI: LLM, GPT, Claude, OpenAI, Anthropic, Hugging Face, Ollama, \
+        PyTorch, TensorFlow, MLX, ONNX, Whisper, Stable Diffusion, DALL-E, \
+        Midjourney, Copilot, RAG, embedding, vector, inference, fine-tuning, \
+        tokenizer, attention, transformer, prompt engineering, agent, tool use. \
+        Editors: Xcode, VS Code, IntelliJ, Vim, Neovim, Emacs, JetBrains, \
+        terminal, shell, bash, zsh, fish, tmux, iTerm, PowerShell, \
+        regex, cron, sed, awk, grep, curl, wget, jq, yq.
         """
 }
