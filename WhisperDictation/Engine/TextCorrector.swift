@@ -112,16 +112,34 @@ final class TextCorrector {
 
         guard !cleaned.isEmpty else { return nil }
 
-        // Simple single-digit sequence detection: "two four six eight" → 2468
-        // If ALL words are single digits (0-9), concatenate them
-        let allSingleDigits = cleaned.allSatisfy { word in
-            if let v = Self.onesMap[word], v <= 9 { return true }
-            if word == "a" { return false }
+        // Single word "zero"
+        if cleaned.count == 1, cleaned[0] == "zero" { return 0 }
+
+        // Detect digit-by-digit dictation vs compound numbers:
+        // "two four six eight" → 2468 (digit sequence)
+        // "eighty eighty" → 8080 (digit sequence)
+        // BUT "forty two" → 42 (compound — tens followed by ones)
+        let hasScaleWord = cleaned.contains { Self.scaleMap[$0] != nil }
+        let hasTensOnesCombo = cleaned.count >= 2 && {
+            for i in 0..<(cleaned.count - 1) {
+                if Self.tensMap[cleaned[i]] != nil,
+                   let v = Self.onesMap[cleaned[i + 1]], v >= 1, v <= 9 {
+                    return true
+                }
+            }
             return false
-        }
-        if allSingleDigits && cleaned.count >= 2 {
-            let digits = cleaned.compactMap { Self.onesMap[$0] }.map(String.init).joined()
-            return Int(digits)
+        }()
+
+        if !hasScaleWord && !hasTensOnesCombo && cleaned.count >= 2 {
+            let values = cleaned.compactMap { word -> Int? in
+                if let v = Self.onesMap[word], v <= 9 { return v }
+                if let v = Self.tensMap[word] { return v }
+                return nil
+            }
+            if values.count == cleaned.count {
+                let digits = values.map(String.init).joined()
+                return Int(digits)
+            }
         }
 
         // Standard number parsing: "three hundred forty two" → 342
