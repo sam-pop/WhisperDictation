@@ -48,8 +48,8 @@ final class AudioCapture {
                 frameCapacity: outputCapacity
             ) else { return }
 
-            conv.reset()
-
+            // Do NOT call conv.reset() here — it destroys the polyphase filter state
+            // needed for continuous sample rate conversion across callbacks
             var inputConsumed = false
             let status = conv.convert(to: convertedBuffer, error: nil) { _, outStatus in
                 if inputConsumed {
