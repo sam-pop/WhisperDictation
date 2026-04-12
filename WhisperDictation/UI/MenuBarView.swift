@@ -43,6 +43,13 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+
+            // Version
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                .font(.system(size: 10))
+                .foregroundStyle(.quaternary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 6)
         }
         .frame(width: 320)
     }
