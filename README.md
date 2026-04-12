@@ -38,7 +38,7 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 - **Works in any app** -- Terminal, VS Code, Claude Code, Xcode, Slack, browsers, email -- anywhere you can type
 - **Fast** -- sub-second transcription on Apple Silicon (Metal GPU). Optimized CPU path for Intel Macs.
 - **100% private** -- all audio processing happens locally. Nothing is sent to any server, ever.
-- **Developer-optimized** -- built-in vocabulary of 400+ technical terms biases Whisper toward correct recognition of API, JSON, Kubernetes, PostgreSQL, GraphQL, etc.
+- **Developer-optimized** -- built-in vocabulary of 500+ technical terms biases Whisper toward correct recognition of API, JSON, Kubernetes, PostgreSQL, GraphQL, etc.
 - **Smart grammar correction** -- auto-capitalizes sentences, fixes 100+ acronym/term casings (api->API, javascript->JavaScript), adds punctuation
 - **Number word conversion** -- "two four six eight" becomes "2,468", "three hundred forty two" becomes "342"
 - **Multiple Whisper models** -- Base (142 MB, fastest), Small (466 MB, balanced), Medium (1.5 GB, most accurate)
@@ -170,7 +170,7 @@ WhisperDictation automatically cleans up Whisper's raw output with a local, rule
 - First letter of every sentence
 - Standalone "I", "I'm", "I'll", "I've"
 
-**100+ Developer Term Corrections**
+**500+ Developer Term Corrections**
 | Whisper says | WhisperDictation outputs |
 |-------------|------------------------|
 | "create a rest api" | "Create a REST API." |
