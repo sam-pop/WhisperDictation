@@ -24,6 +24,12 @@ lib/
 *.dylib
 whisper.cpp/build/
 
+# XcodeGen output (regenerate with `xcodegen generate`)
+*.xcodeproj
+
+# Claude Code local settings (contains machine-specific paths)
+.claude/settings.local.json
+
 # Environment
 .env
 .env.local
