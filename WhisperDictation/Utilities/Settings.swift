@@ -89,17 +89,32 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         Prometheus, Grafana, Datadog, Sentry. \
         Tools: npm, yarn, pnpm, Bun, Deno, Node.js, Webpack, Vite, esbuild, \
         ESLint, Prettier, Cargo, pip, Poetry, CocoaPods, homebrew. \
-        Concepts: API, SDK, CLI, IDE, ORM, async, await, promise, callback, \
+        Frontend: tooltip, dropdown, popover, modal, sidebar, navbar, breadcrumb, \
+        carousel, accordion, checkbox, toggle, slider, pagination, skeleton, \
+        responsive, viewport, breakpoint, flexbox, grid, z-index, opacity, \
+        hover, focus, blur, onClick, onChange, onSubmit, useState, useEffect, \
+        SSR, SSG, ISR, hydration, lazy loading, code splitting, tree shaking, \
+        bundler, minify, transpile, polyfill, CSS-in-JS, styled-components, \
+        SVG, canvas, WebGL, animation, transition, keyframe, media query, \
+        accessibility, ARIA, screen reader, semantic HTML, SEO, meta tags, \
+        localStorage, sessionStorage, IndexedDB, service worker, PWA. \
+        Backend: middleware, controller, route, handler, resolver, schema, \
+        migration, seed, ORM, query builder, connection pool, transaction, \
+        caching, rate limiting, pagination, cursor, offset, webhook, \
+        authentication, authorization, session, cookie, token, RBAC, \
+        cron job, queue, worker, pub/sub, event-driven, message broker, \
+        logging, monitoring, tracing, health check, graceful shutdown. \
+        DevOps: container, pod, replica set, deployment, ingress, namespace, \
+        CI/CD pipeline, artifact, staging, production, canary, blue-green, \
+        rollback, hotfix, feature flag, environment variable, secret, \
+        load balancer, reverse proxy, API gateway, service mesh, \
+        uptime, latency, throughput, SLA, SLO, incident, postmortem. \
+        Concepts: API, SDK, CLI, IDE, async, await, promise, callback, \
         closure, mutex, thread, microservice, serverless, CDN, \
         HTTP, HTTPS, TCP, UDP, DNS, SSL, TLS, SSH, \
-        container, pod, deployment, ingress, CI/CD pipeline, \
         pull request, merge, rebase, commit, branch, deploy, refactor, \
         unit test, integration test, TDD, mock, coverage, \
         function, class, struct, enum, protocol, interface, component, module. \
-        UI: tooltip, dropdown, popover, modal, sidebar, navbar, breadcrumb, \
-        carousel, accordion, checkbox, toggle, slider, pagination, skeleton, \
-        responsive, viewport, breakpoint, flexbox, grid, z-index, opacity, \
-        hover, focus, blur, onClick, onChange, onSubmit, useState, useEffect. \
         AI: LLM, GPT, Claude, OpenAI, Anthropic, Hugging Face, \
         PyTorch, TensorFlow, MLX, Whisper, RAG, embedding, inference, \
         Xcode, VS Code, IntelliJ, Vim, Neovim, terminal, bash, zsh.
