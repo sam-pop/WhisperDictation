@@ -162,19 +162,26 @@ final class DictationEngine {
         let feedback = self.soundFeedback
 
         Task.detached(priority: .userInitiated) { [weak self] in
+            // Guarantee state returns to .idle no matter what happens
+            func resetToIdle() async {
+                await MainActor.run { [weak self] in
+                    feedback.playDoneSound()
+                    self?.state = .idle
+                }
+            }
+
             guard let bridge else {
-                await MainActor.run { [weak self] in self?.state = .idle }
+                await resetToIdle()
                 return
             }
 
             // Transcribe with streaming callback for progress indication
             let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                // Update UI to show we're actively transcribing (not stuck)
-                fputs("[Streaming] Segment: \(segment)\n", stderr)
+                fputs("[Streaming] \(segment)\n", stderr)
             }
 
             guard !rawText.isEmpty else {
-                await MainActor.run { [weak self] in self?.state = .idle }
+                await resetToIdle()
                 return
             }
 
@@ -186,13 +193,10 @@ final class DictationEngine {
                 self?.state = .typing
             }
 
-            // Type corrected text (runs off main thread to avoid blocking UI)
+            // Type corrected text on dedicated typing queue (not cooperative thread pool)
             injector.type(text: corrected)
-            feedback.playDoneSound()
 
-            await MainActor.run { [weak self] in
-                self?.state = .idle
-            }
+            await resetToIdle()
         }
     }
 }
