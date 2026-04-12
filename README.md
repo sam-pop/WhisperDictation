@@ -30,7 +30,7 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 **Why WhisperDictation?**
 - Apple's built-in dictation sends audio to Apple servers and has limited accuracy for technical terms
 - Commercial tools like Willow Voice and WisprFlow cost $8-15/month
-- WhisperDictation is **completely free**, runs **100% offline**, and is **optimized for developers** with 400+ technical terms built in
+- WhisperDictation is **completely free**, runs **100% offline**, and is **optimized for developers** with 500+ technical terms built in
 
 ## Features
 
