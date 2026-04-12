@@ -79,5 +79,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sampop.WhisperDictationTests
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: WhisperDictation

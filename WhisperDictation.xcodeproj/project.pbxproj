@@ -20,6 +20,7 @@
 		4BD4A845ECA8E3E358FD2113 /* WhisperDictationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F649D114F37D3C0F7ED21A4D /* WhisperDictationTests.swift */; };
 		57EA783953AE4C46DD19E6A2 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64F79DB99221A8DF3AD92F2C /* MenuBarView.swift */; };
 		594985A1BCE8E12AA48EB7CC /* WhisperDictationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E528197E587E208E43F6B793 /* WhisperDictationApp.swift */; };
+		6F0D2BCF525348E6E8ABB18A /* AudioDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BD9F23DCE53B81DBA91FCB /* AudioDeviceManager.swift */; };
 		81D4AA6461C965EFCE5F9045 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F83185F747BC3816B1EEFE /* AudioCapture.swift */; };
 		886E998DE322ABB3381FEBCE /* SoundFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49E446C6BC8CF3611947FC37 /* SoundFeedback.swift */; };
 		91A3D7786457907F21BD7EA5 /* Accelerate.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED844311C0159A17FA081D4 /* Accelerate.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -32,7 +33,9 @@
 		BC5A025BF77ABEF9C583371C /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 90C25C9EB1950947F5789BAF /* AppKit.framework */; };
 		CA0668AA78FF56C46A1CFEDE /* WhisperBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72495F5B1FA643D627CB8F2E /* WhisperBridge.swift */; };
 		CECC07937EDE9F496D166775 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56BBEBB122535F358BB2A270 /* PermissionManager.swift */; };
+		D217BC6774D3EFDD8C6EA327 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789FC02D2D2D1B1FACBB9081 /* LaunchAtLoginHelper.swift */; };
 		DA9F153109164B07BA7DD135 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25FC8B04B76FEA3CA1795B71 /* OnboardingView.swift */; };
+		ED6E429E0EBF357F330744BE /* TextCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F81BD55B48BEA63BCEB378A /* TextCorrector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +72,7 @@
 		172AD12BE2980C9DC0BE2F33 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = MetalKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		25FC8B04B76FEA3CA1795B71 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		3805DE9B28F733D991AA1DDF /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = AVFoundation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F81BD55B48BEA63BCEB378A /* TextCorrector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextCorrector.swift; sourceTree = "<group>"; };
 		49E446C6BC8CF3611947FC37 /* SoundFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundFeedback.swift; sourceTree = "<group>"; };
 		4ED844311C0159A17FA081D4 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Accelerate.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		50579EA796CA0E18C0A12EA2 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Metal.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,9 +82,11 @@
 		65926DA67CFF52E6F32FB153 /* WhisperDictation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperDictation.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6733AF2BF09766D3F222C533 /* HotkeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyMonitor.swift; sourceTree = "<group>"; };
 		72495F5B1FA643D627CB8F2E /* WhisperBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperBridge.swift; sourceTree = "<group>"; };
+		789FC02D2D2D1B1FACBB9081 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginHelper.swift; sourceTree = "<group>"; };
 		90C25C9EB1950947F5789BAF /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = AppKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D196D716D926265FA0C5DAB /* WhisperDictationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperDictationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4953BF8A38FC87EB026DCB4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A6BD9F23DCE53B81DBA91FCB /* AudioDeviceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDeviceManager.swift; sourceTree = "<group>"; };
 		AB0504E48CA3C9F0042FC816 /* DictationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationEngine.swift; sourceTree = "<group>"; };
 		CF2A27139E286690DCDEA702 /* TextInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInjector.swift; sourceTree = "<group>"; };
 		D7AF2A9E9A0E8E46B0684E87 /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
@@ -200,6 +206,7 @@
 				AB0504E48CA3C9F0042FC816 /* DictationEngine.swift */,
 				D7AF2A9E9A0E8E46B0684E87 /* ModelManager.swift */,
 				49E446C6BC8CF3611947FC37 /* SoundFeedback.swift */,
+				3F81BD55B48BEA63BCEB378A /* TextCorrector.swift */,
 				CF2A27139E286690DCDEA702 /* TextInjector.swift */,
 				72495F5B1FA643D627CB8F2E /* WhisperBridge.swift */,
 			);
@@ -209,7 +216,9 @@
 		80A0497E2B3017024245599A /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				A6BD9F23DCE53B81DBA91FCB /* AudioDeviceManager.swift */,
 				6733AF2BF09766D3F222C533 /* HotkeyMonitor.swift */,
+				789FC02D2D2D1B1FACBB9081 /* LaunchAtLoginHelper.swift */,
 				56BBEBB122535F358BB2A270 /* PermissionManager.swift */,
 				00B3D692211B6FF96C9F58A6 /* Settings.swift */,
 			);
@@ -301,8 +310,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				81D4AA6461C965EFCE5F9045 /* AudioCapture.swift in Sources */,
+				6F0D2BCF525348E6E8ABB18A /* AudioDeviceManager.swift in Sources */,
 				9C31E83B2E74C675EB7D6D55 /* DictationEngine.swift in Sources */,
 				37544B66D238CFE3F5F96F61 /* HotkeyMonitor.swift in Sources */,
+				D217BC6774D3EFDD8C6EA327 /* LaunchAtLoginHelper.swift in Sources */,
 				57EA783953AE4C46DD19E6A2 /* MenuBarView.swift in Sources */,
 				9888C7CC89B386CA71A07225 /* ModelManager.swift in Sources */,
 				DA9F153109164B07BA7DD135 /* OnboardingView.swift in Sources */,
@@ -310,6 +321,7 @@
 				B6C0CC718B93742D7AFA6A9C /* Settings.swift in Sources */,
 				19360600A156EBE8D822801D /* SettingsView.swift in Sources */,
 				886E998DE322ABB3381FEBCE /* SoundFeedback.swift in Sources */,
+				ED6E429E0EBF357F330744BE /* TextCorrector.swift in Sources */,
 				395E60A7D5FCE59FCB1484E6 /* TextInjector.swift in Sources */,
 				CA0668AA78FF56C46A1CFEDE /* WhisperBridge.swift in Sources */,
 				594985A1BCE8E12AA48EB7CC /* WhisperDictationApp.swift in Sources */,
@@ -332,6 +344,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -431,6 +444,8 @@
 					"-lggml-base",
 					"-lggml-cpu",
 					"-lggml-metal",
+					"-lggml-blas",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.sampop.WhisperDictation;
 				SDKROOT = macosx;
@@ -501,6 +516,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -537,6 +553,8 @@
 					"-lggml-base",
 					"-lggml-cpu",
 					"-lggml-metal",
+					"-lggml-blas",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.sampop.WhisperDictation;
 				SDKROOT = macosx;
