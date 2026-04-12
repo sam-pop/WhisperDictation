@@ -71,20 +71,33 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
     // MARK: - Default Vocabulary Prompt
 
-    // Must stay under ~200 words to avoid whisper's 1024 token limit
+    // ~250 words — stays under whisper's 1024 token limit
     static let defaultVocabularyPrompt = """
-        Technical programming discussion. \
-        API, SDK, CLI, JSON, YAML, REST, GraphQL, gRPC, WebSocket, HTTP, HTTPS, \
-        JavaScript, TypeScript, Python, Swift, SwiftUI, Rust, Go, Java, Kotlin, C++, \
-        React, Next.js, Vue, Angular, Express, Django, FastAPI, Tailwind, \
-        Docker, Kubernetes, AWS, GCP, Azure, Terraform, Nginx, Vercel, Cloudflare, \
-        PostgreSQL, MongoDB, Redis, Firebase, Supabase, Prisma, MySQL, SQLite, \
-        Git, GitHub, CI/CD, GitHub Actions, npm, Webpack, Vite, ESLint, \
-        JWT, OAuth, SSL, TLS, SSH, DNS, CDN, TCP, UDP, \
-        async, await, middleware, endpoint, webhook, microservice, serverless, \
-        LLM, GPT, Claude, OpenAI, Anthropic, PyTorch, TensorFlow, Whisper, \
-        Xcode, VS Code, terminal, bash, zsh, regex, curl, \
-        function, class, struct, enum, interface, component, module, \
-        pull request, merge, rebase, commit, branch, deploy, refactor.
+        Technical software engineering discussion. \
+        Languages: JavaScript, TypeScript, Python, Swift, SwiftUI, Rust, Go, Golang, \
+        Java, Kotlin, C++, Ruby, PHP, Dart, Haskell, Elixir, Objective-C, C#. \
+        Frameworks: React, Next.js, Vue, Angular, Svelte, Express, Django, Flask, \
+        FastAPI, NestJS, Tailwind, Bootstrap, Spring Boot, Rails, Laravel. \
+        Infrastructure: Docker, Kubernetes, AWS, GCP, Azure, Terraform, Ansible, \
+        Nginx, Cloudflare, Vercel, Netlify, Heroku, Lambda, EC2, S3, ECS, EKS, \
+        Cloud Run, Cloud Functions. \
+        Databases: PostgreSQL, MySQL, SQLite, MongoDB, Redis, Elasticsearch, \
+        DynamoDB, Firestore, Firebase, Supabase, Prisma, Drizzle. \
+        APIs: REST, GraphQL, gRPC, WebSocket, tRPC, OpenAPI, JSON, YAML, XML, \
+        protobuf, JWT, OAuth, CORS, CSRF, webhook, endpoint, middleware. \
+        DevOps: Git, GitHub, GitLab, CI/CD, GitHub Actions, Jenkins, Helm, \
+        Prometheus, Grafana, Datadog, Sentry. \
+        Tools: npm, yarn, pnpm, Bun, Deno, Node.js, Webpack, Vite, esbuild, \
+        ESLint, Prettier, Cargo, pip, Poetry, CocoaPods, homebrew. \
+        Concepts: API, SDK, CLI, IDE, ORM, async, await, promise, callback, \
+        closure, mutex, thread, microservice, serverless, CDN, \
+        HTTP, HTTPS, TCP, UDP, DNS, SSL, TLS, SSH, \
+        container, pod, deployment, ingress, CI/CD pipeline, \
+        pull request, merge, rebase, commit, branch, deploy, refactor, \
+        unit test, integration test, TDD, mock, coverage, \
+        function, class, struct, enum, protocol, interface, component, module. \
+        AI: LLM, GPT, Claude, OpenAI, Anthropic, Hugging Face, \
+        PyTorch, TensorFlow, MLX, Whisper, RAG, embedding, inference, \
+        Xcode, VS Code, IntelliJ, Vim, Neovim, terminal, bash, zsh.
         """
 }
