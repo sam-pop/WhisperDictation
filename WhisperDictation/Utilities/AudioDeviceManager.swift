@@ -29,28 +29,25 @@ final class AudioDeviceManager: ObservableObject {
         selectedDevice ?? inputDevices.first
     }
 
-    /// Set the selected device as the AVAudioSession input (via CoreAudio)
+    /// Set the selected device on a specific AVAudioEngine's input node (per-engine, not system-wide)
     func applySelectedDevice(to engine: AVAudioEngine) {
         guard let uid = AppSettings.shared.selectedAudioDeviceUID else { return }
         guard let device = inputDevices.first(where: { $0.uid == uid }) else { return }
 
+        // Set the device on the engine's input node AudioUnit — does NOT change system default
+        let inputNode = engine.inputNode
         var deviceID = device.id
-        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
+        let status = AudioUnitSetProperty(
+            inputNode.audioUnit!,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
         )
-
-        // Set as default input
-        AudioObjectSetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0, nil,
-            size,
-            &deviceID
-        )
+        if status != noErr {
+            fputs("[AudioDeviceManager] Failed to set device \(device.name): \(status)\n", stderr)
+        }
     }
 
     // MARK: - List Devices

@@ -168,9 +168,10 @@ final class AudioCapture {
         let durationSec = Double(buffer.count) / Self.sampleRate
         fputs("[AudioCapture] Stopped. \(buffer.count) samples (\(String(format: "%.1f", durationSec))s)\n", stderr)
 
-        // Restart pre-recording for next dictation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            try? self?.startPreRecording()
+        // Restart pre-recording for next dictation (only if not already recording again)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.audioEngine == nil, self.preRecordEngine == nil else { return }
+            try? self.startPreRecording()
         }
 
         return buffer
