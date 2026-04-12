@@ -27,8 +27,9 @@ whisper.cpp/build/
 # XcodeGen output (regenerate with `xcodegen generate`)
 *.xcodeproj
 
-# Claude Code (local config, agents, skills)
+# Claude Code
 .claude/
+CLAUDE.md
 
 # Superpowers docs
 docs/superpowers/
