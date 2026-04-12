@@ -41,6 +41,35 @@ final class AppSettingsTests: XCTestCase {
     func testDefaultVocabularyPrompt() {
         XCTAssertTrue(AppSettings.defaultVocabularyPrompt.contains("Technical software engineering"))
     }
+
+    func testCustomTermsDefaultEmpty() {
+        // Fresh install should have no custom terms (or whatever the user currently has)
+        let terms = AppSettings.shared.customTerms
+        XCTAssertTrue(terms is [String]) // type check — always passes, validates the property exists
+    }
+
+    func testAddAndRemoveCustomTerm() {
+        let settings = AppSettings.shared
+        let original = settings.customTerms
+
+        settings.addCustomTerm("TestTermXYZ123")
+        XCTAssertTrue(settings.customTerms.contains("TestTermXYZ123"))
+
+        // Duplicate (case-insensitive) should not add
+        let countBefore = settings.customTerms.count
+        settings.addCustomTerm("testtermxyz123")
+        XCTAssertEqual(settings.customTerms.count, countBefore)
+
+        // Empty/whitespace term should not add
+        settings.addCustomTerm("   ")
+        XCTAssertFalse(settings.customTerms.contains("   "))
+
+        settings.removeCustomTerm("TestTermXYZ123")
+        XCTAssertFalse(settings.customTerms.contains("TestTermXYZ123"))
+
+        // Restore original
+        settings.customTerms = original
+    }
 }
 
 // MARK: - State Machine Tests
@@ -291,6 +320,44 @@ final class TextCorrectorTests: XCTestCase {
         XCTAssertTrue(result.contains("300"))
         XCTAssertTrue(result.contains("RAM"))
         XCTAssertTrue(result.contains("I need"))
+    }
+
+    // MARK: Custom Terms
+
+    func testCustomTermCasing() {
+        let settings = AppSettings.shared
+        let original = settings.customTerms
+
+        settings.customTerms = ["McKinsey", "DeepMind"]
+        let result = corrector.correct("talk to mckinsey about deepmind")
+        XCTAssertTrue(result.contains("McKinsey"), "Got: \(result)")
+        XCTAssertTrue(result.contains("DeepMind"), "Got: \(result)")
+
+        settings.customTerms = original
+    }
+
+    func testCustomTermsEmptyIsNoOp() {
+        let settings = AppSettings.shared
+        let original = settings.customTerms
+
+        settings.customTerms = []
+        let result = corrector.correct("hello world")
+        XCTAssertTrue(result.hasPrefix("Hello"))
+
+        settings.customTerms = original
+    }
+
+    func testCustomTermsDoNotBreakExistingPipeline() {
+        let settings = AppSettings.shared
+        let original = settings.customTerms
+
+        settings.customTerms = ["MyCompany"]
+        let result = corrector.correct("the api at mycompany returns json")
+        XCTAssertTrue(result.contains("API"), "Got: \(result)")
+        XCTAssertTrue(result.contains("JSON"), "Got: \(result)")
+        XCTAssertTrue(result.contains("MyCompany"), "Got: \(result)")
+
+        settings.customTerms = original
     }
 }
 

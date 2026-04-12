@@ -614,6 +614,13 @@ private struct VocabularySection: View {
 
     var body: some View {
         VStack(spacing: 14) {
+            // Names & Terms
+            SettingsCard(colorScheme: colorScheme) {
+                CardHeader("Names & Terms", subtitle: "Add names of people, places, and terms you use often")
+                CustomTermsEditor(settings: settings, colorScheme: colorScheme)
+            }
+
+            // Developer Vocabulary
             SettingsCard(colorScheme: colorScheme) {
                 CardHeader("Developer Vocabulary", subtitle: "Bias Whisper toward recognizing these terms")
                 TextEditor(text: $settings.vocabularyPrompt)
@@ -643,6 +650,141 @@ private struct VocabularySection: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Custom Terms Editor
+
+private struct CustomTermsEditor: View {
+    @ObservedObject var settings: AppSettings
+    let colorScheme: ColorScheme
+    @State private var newTerm = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Input row
+            HStack(spacing: 8) {
+                TextField("Type a name or term...", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+                    .onSubmit { addTerm() }
+
+                Button("Add") { addTerm() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(.blue)
+                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || settings.customTerms.count >= 100)
+            }
+
+            // Pills
+            if !settings.customTerms.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(settings.customTerms, id: \.self) { term in
+                        TermPill(term: term, colorScheme: colorScheme) {
+                            settings.removeCustomTerm(term)
+                        }
+                    }
+                }
+
+                HStack {
+                    let count = settings.customTerms.count
+                    Text("\(count) / 100 terms")
+                        .font(.system(size: 11))
+                        .foregroundColor(count >= 100 ? .orange : .secondary.opacity(0.5))
+                    Spacer()
+                    Button("Clear All") {
+                        settings.customTerms = []
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private func addTerm() {
+        settings.addCustomTerm(newTerm)
+        newTerm = ""
+    }
+}
+
+// MARK: - Term Pill
+
+private struct TermPill: View {
+    let term: String
+    let colorScheme: ColorScheme
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(term)
+                .font(.system(size: 11, weight: .medium))
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
+        )
+        .overlay(
+            Capsule()
+                .stroke(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+}
+
+// MARK: - Flow Layout
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        var height: CGFloat = 0
+        for (i, row) in rows.enumerated() {
+            let rowHeight = row.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+            height += rowHeight + (i > 0 ? spacing : 0)
+        }
+        return CGSize(width: proposal.width ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        var y = bounds.minY
+        for (i, row) in rows.enumerated() {
+            let rowHeight = row.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+            if i > 0 { y += spacing }
+            var x = bounds.minX
+            for subview in row {
+                let size = subview.sizeThatFits(.unspecified)
+                subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += rowHeight
+        }
+    }
+
+    private func computeRows(proposal: ProposedViewSize, subviews: Subviews) -> [[LayoutSubviews.Element]] {
+        let maxWidth = proposal.width ?? .infinity
+        var rows: [[LayoutSubviews.Element]] = [[]]
+        var currentWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentWidth + size.width > maxWidth && !rows[rows.count - 1].isEmpty {
+                rows.append([])
+                currentWidth = 0
+            }
+            rows[rows.count - 1].append(subview)
+            currentWidth += size.width + spacing
+        }
+        return rows
     }
 }
 
