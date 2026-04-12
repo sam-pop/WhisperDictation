@@ -1,7 +1,7 @@
 import Foundation
 
-final class TextCorrector {
-    static let shared = TextCorrector()
+final class TextCorrector: @unchecked Sendable {
+    static nonisolated(unsafe) let shared = TextCorrector()
 
     func correct(_ text: String) -> String {
         guard AppSettings.shared.grammarCorrectionEnabled else { return text }

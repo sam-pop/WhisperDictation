@@ -7,8 +7,8 @@ struct AudioInputDevice: Identifiable, Hashable {
     let name: String
 }
 
-final class AudioDeviceManager: ObservableObject {
-    static let shared = AudioDeviceManager()
+final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
+    static nonisolated(unsafe) let shared = AudioDeviceManager()
 
     @Published var inputDevices: [AudioInputDevice] = []
 

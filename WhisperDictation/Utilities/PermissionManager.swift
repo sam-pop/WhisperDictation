@@ -1,8 +1,8 @@
 import AVFoundation
 import Cocoa
 
-final class PermissionManager: ObservableObject {
-    static let shared = PermissionManager()
+final class PermissionManager: ObservableObject, @unchecked Sendable {
+    static nonisolated(unsafe) let shared = PermissionManager()
 
     @Published var microphoneGranted = false
     @Published var accessibilityGranted = false

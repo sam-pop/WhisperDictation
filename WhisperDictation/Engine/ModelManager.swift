@@ -1,7 +1,7 @@
 import Foundation
 
-final class ModelManager: ObservableObject {
-    static let shared = ModelManager()
+final class ModelManager: ObservableObject, @unchecked Sendable {
+    static nonisolated(unsafe) let shared = ModelManager()
 
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0

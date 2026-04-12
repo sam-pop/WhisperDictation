@@ -1,7 +1,7 @@
 import Foundation
 
-final class AppSettings: ObservableObject {
-    static let shared = AppSettings()
+final class AppSettings: ObservableObject, @unchecked Sendable {
+    static nonisolated(unsafe) let shared = AppSettings()
 
     private let defaults = UserDefaults.standard
 

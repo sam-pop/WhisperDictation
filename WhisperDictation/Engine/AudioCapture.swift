@@ -111,11 +111,19 @@ final class AudioCapture {
             self.bufferLock.unlock()
 
             let samples = self.convertToFloat(buffer, converter: conv)
-            guard !samples.isEmpty else { return }
+            if samples.isEmpty {
+                fputs("[AudioCapture] WARNING: convertToFloat returned 0 samples from \(buffer.frameLength) frames\n", stderr)
+                return
+            }
 
             self.bufferLock.lock()
             self.audioBuffer.append(contentsOf: samples)
+            let total = self.audioBuffer.count
             self.bufferLock.unlock()
+
+            if total % 16000 < 500 { // Log roughly every second
+                fputs("[AudioCapture] Buffer: \(total) samples (\(String(format: "%.1f", Double(total) / Self.sampleRate))s)\n", stderr)
+            }
         }
 
         try engine.start()
@@ -125,36 +133,45 @@ final class AudioCapture {
 
     /// Convert an audio buffer to Float32 16kHz mono
     private func convertToFloat(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter?) -> [Float] {
-        if let converter {
-            let ratio = Self.sampleRate / converter.inputFormat.sampleRate
-            let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
-            guard let convertedBuffer = AVAudioPCMBuffer(
-                pcmFormat: Self.desiredFormat,
-                frameCapacity: outputCapacity
-            ) else { return [] }
-
-            var inputConsumed = false
-            let status = converter.convert(to: convertedBuffer, error: nil) { _, outStatus in
-                if inputConsumed {
-                    outStatus.pointee = .noDataNow
-                    return nil
-                }
-                inputConsumed = true
-                outStatus.pointee = .haveData
-                return buffer
-            }
-
-            if (status == .haveData || status == .endOfStream),
-               convertedBuffer.frameLength > 0,
-               let floatData = convertedBuffer.floatChannelData {
-                return Array(UnsafeBufferPointer(start: floatData[0], count: Int(convertedBuffer.frameLength)))
-            }
-            return []
-        } else {
+        guard let converter else {
             // No converter — assume format already matches
             guard let floatData = buffer.floatChannelData else { return [] }
             return Array(UnsafeBufferPointer(start: floatData[0], count: Int(buffer.frameLength)))
         }
+
+        let ratio = Self.sampleRate / converter.inputFormat.sampleRate
+        let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+        guard let convertedBuffer = AVAudioPCMBuffer(
+            pcmFormat: Self.desiredFormat,
+            frameCapacity: outputCapacity
+        ) else { return [] }
+
+        // Reset converter before each conversion to prevent internal state drift
+        converter.reset()
+
+        var inputConsumed = false
+        var convError: NSError?
+        let status = converter.convert(to: convertedBuffer, error: &convError) { _, outStatus in
+            if inputConsumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            inputConsumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        if let convError {
+            fputs("[AudioCapture] Conversion error: \(convError)\n", stderr)
+            return []
+        }
+
+        if (status == .haveData || status == .endOfStream),
+           convertedBuffer.frameLength > 0,
+           let floatData = convertedBuffer.floatChannelData {
+            return Array(UnsafeBufferPointer(start: floatData[0], count: Int(convertedBuffer.frameLength)))
+        }
+        return []
     }
 
     func stopRecording() -> [Float] {
