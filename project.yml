@@ -8,9 +8,8 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "6.0"
+    SWIFT_VERSION: "5"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    SWIFT_STRICT_CONCURRENCY: minimal
 
 targets:
   WhisperDictation:
@@ -39,7 +38,6 @@ targets:
           - "-lggml-metal"
           - "-lggml-blas"
           - "-lc++"
-        SWIFT_STRICT_CONCURRENCY: minimal
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: false
       configs:
