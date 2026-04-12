@@ -167,12 +167,10 @@ final class DictationEngine {
                 return
             }
 
-            // Streaming transcription: type segments as they're decoded
-            var streamedText = ""
+            // Transcribe with streaming callback for progress indication
             let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                // This fires on the whisper queue as each segment completes
-                injector.type(text: segment)
-                streamedText += segment
+                // Update UI to show we're actively transcribing (not stuck)
+                fputs("[Streaming] Segment: \(segment)\n", stderr)
             }
 
             guard !rawText.isEmpty else {
@@ -180,17 +178,19 @@ final class DictationEngine {
                 return
             }
 
-            // Apply grammar correction to the full text
+            // Apply grammar correction BEFORE typing
             let corrected = TextCorrector.shared.correct(rawText)
-
-            // If correction changed the text, we need to fix what was already typed.
-            // For now, just store the corrected version as lastTranscription.
-            // The streamed text is already typed — correction would require selecting
-            // and replacing, which is complex. Store for display in menu bar.
-            feedback.playDoneSound()
 
             await MainActor.run { [weak self] in
                 self?.lastTranscription = corrected
+                self?.state = .typing
+            }
+
+            // Type corrected text (runs off main thread to avoid blocking UI)
+            injector.type(text: corrected)
+            feedback.playDoneSound()
+
+            await MainActor.run { [weak self] in
                 self?.state = .idle
             }
         }

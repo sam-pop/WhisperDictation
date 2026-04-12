@@ -1,12 +1,11 @@
 import Foundation
 
-/// Context passed to the C callback for streaming segment output
+/// Context passed to the C callback for streaming segment output.
+/// Retained via Unmanaged for the duration of whisper_full.
 private final class SegmentCallbackContext {
     let onSegment: (String) -> Void
-    let context: OpaquePointer
 
-    init(context: OpaquePointer, onSegment: @escaping (String) -> Void) {
-        self.context = context
+    init(onSegment: @escaping (String) -> Void) {
         self.onSegment = onSegment
     }
 }
@@ -22,7 +21,8 @@ private func segmentCallback(
     let callbackCtx = Unmanaged<SegmentCallbackContext>.fromOpaque(userData).takeUnretainedValue()
 
     let totalSegments = whisper_full_n_segments(ctx)
-    for i in (totalSegments - nNew)..<totalSegments {
+    let start = max(0, totalSegments - nNew)
+    for i in start..<totalSegments {
         if let text = whisper_full_get_segment_text(ctx, i) {
             let segment = String(cString: text).trimmingCharacters(in: .whitespaces)
             if !segment.isEmpty {
@@ -123,12 +123,12 @@ final class WhisperBridge: @unchecked Sendable {
             params.suppress_regex = UnsafePointer(suppressCStr)
             params.no_context = false
 
-            // For streaming, use single_segment to get faster first output
-            params.single_segment = onSegment != nil
+            // Must be false for streaming — allows multiple segment callbacks during decode
+            params.single_segment = false
 
-            // Temperature fallback
+            // Temperature fallback (disable for beam search — causes unexpected re-decodes)
             params.temperature = 0.0
-            params.temperature_inc = 0.2
+            params.temperature_inc = useBeamSearch ? 0.0 : 0.2
             params.entropy_thold = 2.4
             params.logprob_thold = -1.0
             params.no_speech_thold = 0.6
@@ -150,12 +150,10 @@ final class WhisperBridge: @unchecked Sendable {
             params.initial_prompt = promptCStr.map { UnsafePointer($0) }
 
             // Streaming callback setup
-            var callbackCtx: SegmentCallbackContext?
             var callbackCtxPtr: Unmanaged<SegmentCallbackContext>?
             if let onSegment {
-                let ctx = SegmentCallbackContext(context: context, onSegment: onSegment)
+                let ctx = SegmentCallbackContext(onSegment: onSegment)
                 let ptr = Unmanaged.passRetained(ctx)
-                callbackCtx = ctx
                 callbackCtxPtr = ptr
                 params.new_segment_callback = segmentCallback
                 params.new_segment_callback_user_data = ptr.toOpaque()

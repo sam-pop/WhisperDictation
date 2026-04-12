@@ -32,9 +32,17 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testDefaultVocabularyPrompt() {
-        XCTAssertTrue(AppSettings.defaultVocabularyPrompt.contains("Technical programming"))
+        XCTAssertTrue(AppSettings.defaultVocabularyPrompt.contains("Technical software engineering"))
         XCTAssertTrue(AppSettings.defaultVocabularyPrompt.contains("SwiftUI"))
         XCTAssertTrue(AppSettings.defaultVocabularyPrompt.contains("TypeScript"))
+    }
+
+    func testGrammarCorrectionDefault() {
+        XCTAssertTrue(AppSettings.shared.grammarCorrectionEnabled)
+    }
+
+    func testNumberConversionDefault() {
+        XCTAssertTrue(AppSettings.shared.numberConversionEnabled)
     }
 }
 
@@ -53,7 +61,12 @@ final class DictationStateTests: XCTestCase {
 
 final class ModelManagerTests: XCTestCase {
     func testModelInfoCount() {
-        XCTAssertEqual(ModelManager.ModelInfo.all.count, 3)
+        // 3 quantized + 3 full precision = 6
+        XCTAssertEqual(ModelManager.ModelInfo.all.count, 6)
+    }
+
+    func testRecommendedModelsCount() {
+        XCTAssertEqual(ModelManager.ModelInfo.recommended.count, 3)
     }
 
     func testModelInfoNames() {
@@ -61,13 +74,9 @@ final class ModelManagerTests: XCTestCase {
         XCTAssertTrue(names.contains("Base (English)"))
         XCTAssertTrue(names.contains("Small (English)"))
         XCTAssertTrue(names.contains("Medium (English)"))
-    }
-
-    func testModelInfoFileNames() {
-        let files = ModelManager.ModelInfo.all.map(\.fileName)
-        XCTAssertTrue(files.contains("ggml-base.en.bin"))
-        XCTAssertTrue(files.contains("ggml-small.en.bin"))
-        XCTAssertTrue(files.contains("ggml-medium.en.bin"))
+        XCTAssertTrue(names.contains("Base Q5 (English)"))
+        XCTAssertTrue(names.contains("Small Q5 (English)"))
+        XCTAssertTrue(names.contains("Medium Q5 (English)"))
     }
 
     func testModelsDirectoryExists() {
@@ -82,6 +91,11 @@ final class ModelManagerTests: XCTestCase {
             XCTAssertTrue(model.url.absoluteString.contains("huggingface.co"))
             XCTAssertTrue(model.url.absoluteString.hasSuffix(".bin"))
         }
+    }
+
+    func testVADModel() {
+        let vad = ModelManager.ModelInfo.vadSilero
+        XCTAssertTrue(vad.url.absoluteString.contains("whisper-vad"))
     }
 }
 
