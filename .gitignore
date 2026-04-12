@@ -27,8 +27,11 @@ whisper.cpp/build/
 # XcodeGen output (regenerate with `xcodegen generate`)
 *.xcodeproj
 
-# Claude Code local settings (contains machine-specific paths)
-.claude/settings.local.json
+# Claude Code (local config, agents, skills)
+.claude/
+
+# Superpowers docs
+docs/superpowers/
 
 # Environment
 .env
