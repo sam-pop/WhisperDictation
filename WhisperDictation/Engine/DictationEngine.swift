@@ -158,7 +158,6 @@ final class DictationEngine {
         let feedback = self.soundFeedback
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            // Guarantee state returns to .idle no matter what happens
             func resetToIdle() async {
                 await MainActor.run { [weak self] in
                     feedback.playDoneSound()
@@ -171,26 +170,24 @@ final class DictationEngine {
                 return
             }
 
-            // Transcribe with streaming callback for progress indication
-            let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                fputs("[Streaming] \(segment)\n", stderr)
-            }
-
-            guard !rawText.isEmpty else {
-                await resetToIdle()
-                return
-            }
-
-            // Apply grammar correction BEFORE typing
-            let corrected = TextCorrector.shared.correct(rawText)
-
             await MainActor.run { [weak self] in
-                self?.lastTranscription = corrected
                 self?.state = .typing
             }
 
-            // Type corrected text on dedicated typing queue (not cooperative thread pool)
-            injector.type(text: corrected)
+            // Stream: correct and type each segment as it's decoded
+            var fullText = ""
+            let _ = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
+                let corrected = TextCorrector.shared.correct(segment)
+                fputs("[Streaming] \(corrected)\n", stderr)
+                injector.type(text: corrected)
+                fullText += corrected
+            }
+
+            await MainActor.run { [weak self] in
+                if !fullText.isEmpty {
+                    self?.lastTranscription = fullText
+                }
+            }
 
             await resetToIdle()
         }
