@@ -6,6 +6,7 @@
     Hold a key. Speak. Release. Your words appear at the cursor.
   </p>
   <p align="center">
+    <a href="https://sam-pop.github.io/WhisperDictation/">Website</a> &bull;
     <a href="#install-dmg">Download</a> &bull;
     <a href="#quick-start">Quick Start</a> &bull;
     <a href="#features">Features</a> &bull;
