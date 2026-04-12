@@ -96,6 +96,10 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         pull request, merge, rebase, commit, branch, deploy, refactor, \
         unit test, integration test, TDD, mock, coverage, \
         function, class, struct, enum, protocol, interface, component, module. \
+        UI: tooltip, dropdown, popover, modal, sidebar, navbar, breadcrumb, \
+        carousel, accordion, checkbox, toggle, slider, pagination, skeleton, \
+        responsive, viewport, breakpoint, flexbox, grid, z-index, opacity, \
+        hover, focus, blur, onClick, onChange, onSubmit, useState, useEffect. \
         AI: LLM, GPT, Claude, OpenAI, Anthropic, Hugging Face, \
         PyTorch, TensorFlow, MLX, Whisper, RAG, embedding, inference, \
         Xcode, VS Code, IntelliJ, Vim, Neovim, terminal, bash, zsh.
