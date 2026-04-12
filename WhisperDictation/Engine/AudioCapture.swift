@@ -86,8 +86,9 @@ final class AudioCapture {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        AudioDeviceManager.shared.applySelectedDevice(to: engine)
+        // prepare() must come before AudioUnit property changes
         engine.prepare()
+        AudioDeviceManager.shared.applySelectedDevice(to: engine)
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
         let conv = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
