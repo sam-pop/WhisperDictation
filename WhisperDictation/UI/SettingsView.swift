@@ -71,13 +71,13 @@ struct SettingsView: View {
                 Text(engine.isModelLoaded ? "Ready" : "Loading...")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                Spacer()
+                Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
             }
             .padding(.horizontal, 16)
-
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
-                .font(.system(size: 10))
-                .foregroundStyle(.quaternary)
-                .padding(.bottom, 12)
+            .padding(.bottom, 12)
         }
         .frame(width: 170)
         .background(
