@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhisperDictation - Free Local Dictation for macOS</title>
+    <meta name="description" content="Free, open-source macOS dictation app. Speech-to-text powered by Whisper AI, runs 100% offline. No cloud, no subscriptions.">
+    <meta property="og:title" content="WhisperDictation">
+    <meta property="og:description" content="Free, local, private dictation for macOS. Hold a key, speak, release. Your words appear at the cursor.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://sam-pop.github.io/WhisperDictation/">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0b;
+            --surface: #141416;
+            --surface-2: #1c1c20;
+            --border: #2a2a30;
+            --text: #e8e8ed;
+            --text-secondary: #8e8e93;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --green: #34d399;
+            --orange: #fb923c;
+            --purple: #a78bfa;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Nav */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            background: rgba(10, 10, 11, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .nav-brand {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-brand svg { width: 22px; height: 22px; }
+        .nav-links { display: flex; gap: 28px; align-items: center; }
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links .gh-link {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-links .gh-link svg { width: 18px; height: 18px; fill: currentColor; }
+
+        /* Hero */
+        .hero {
+            padding: 160px 24px 100px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 400px;
+            background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 28px;
+        }
+        .hero-badge .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+        }
+        h1 {
+            font-size: clamp(40px, 7vw, 72px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.05;
+            margin-bottom: 20px;
+        }
+        h1 .gradient {
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero-sub {
+            font-size: 18px;
+            color: var(--text-secondary);
+            max-width: 520px;
+            margin: 0 auto 40px;
+            line-height: 1.7;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 14px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5558e6;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 30px var(--accent-glow);
+        }
+        .btn-secondary {
+            background: var(--surface-2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--border);
+            transform: translateY(-1px);
+        }
+        .btn svg { width: 18px; height: 18px; }
+
+        /* How it works */
+        .how-it-works {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px 24px 100px;
+            text-align: center;
+        }
+        .steps {
+            display: flex;
+            gap: 0;
+            justify-content: center;
+            align-items: center;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 24px;
+            flex: 1;
+            min-width: 140px;
+        }
+        .step-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+        .step-label {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .step-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .step-arrow {
+            font-size: 20px;
+            color: var(--text-secondary);
+            padding: 0 4px;
+        }
+
+        /* Features */
+        .features {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        .section-label {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+        .section-title {
+            text-align: center;
+            font-size: 36px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 56px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px;
+            transition: border-color 0.2s;
+        }
+        .feature-card:hover {
+            border-color: #3a3a42;
+        }
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin-bottom: 16px;
+        }
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Comparison */
+        .comparison {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        td:first-child { font-weight: 600; }
+        .check { color: var(--green); }
+        .cross { color: #ef4444; }
+
+        /* Models */
+        .models {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        .model-card {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 10px;
+        }
+        .model-card.recommended {
+            border-color: var(--accent);
+            background: linear-gradient(135deg, rgba(99,102,241,0.06), var(--surface));
+        }
+        .model-tier {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .model-info { flex: 1; }
+        .model-info h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+        .model-meta {
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 16px;
+        }
+        .model-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: var(--accent-glow);
+            color: var(--accent);
+        }
+
+        /* Install */
+        .install {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        .install-steps {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 32px;
+        }
+        .install-step {
+            display: flex;
+            gap: 16px;
+            padding: 12px 0;
+        }
+        .install-step:not(:last-child) {
+            border-bottom: 1px solid var(--border);
+        }
+        .install-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .install-step p { font-size: 14px; }
+        .install-step code {
+            background: var(--surface-2);
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-family: 'SF Mono', Menlo, monospace;
+        }
+
+        /* Build from source */
+        .source-block {
+            margin-top: 32px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .source-header {
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .source-block pre {
+            padding: 18px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.7;
+            font-family: 'SF Mono', Menlo, monospace;
+            color: var(--text-secondary);
+        }
+        .source-block pre span { color: var(--text-secondary); }
+        .source-block pre .cmd { color: var(--text); }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 24px;
+            text-align: center;
+        }
+        .footer-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .footer-links {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: var(--text); }
+        .footer-copy {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Mobile */
+        @media (max-width: 640px) {
+            .nav-links a:not(.gh-link) { display: none; }
+            .hero { padding: 120px 20px 60px; }
+            .hero-sub { font-size: 16px; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .model-meta { flex-direction: column; gap: 4px; }
+            .step-arrow { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <div class="nav-inner">
+        <a href="#" class="nav-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+            WhisperDictation
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#models">Models</a>
+            <a href="#install">Install</a>
+            <a href="https://github.com/sam-pop/WhisperDictation" class="gh-link" target="_blank">
+                <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                GitHub
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge"><span class="dot"></span> 100% local &bull; 100% free &bull; 100% private</div>
+    <h1>Dictation that<br><span class="gradient">respects your privacy.</span></h1>
+    <p class="hero-sub">
+        Hold a key, speak, release. Your words appear at the cursor.
+        Powered by Whisper AI, running entirely on your Mac. No cloud. No subscriptions.
+    </p>
+    <div class="hero-actions">
+        <a href="https://github.com/sam-pop/WhisperDictation/releases/latest" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download DMG
+        </a>
+        <a href="https://github.com/sam-pop/WhisperDictation" class="btn btn-secondary" target="_blank">
+            View on GitHub
+        </a>
+    </div>
+</section>
+
+<!-- How it works -->
+<section class="how-it-works">
+    <div class="section-label">How It Works</div>
+    <div class="section-title">Three steps. Zero setup.</div>
+    <div class="steps">
+        <div class="step">
+            <div class="step-icon">&#x2325;</div>
+            <div class="step-label">Hold a key</div>
+            <div class="step-desc">Right Option by default, rebind to any key</div>
+        </div>
+        <span class="step-arrow">&rarr;</span>
+        <div class="step">
+            <div class="step-icon">&#x1F399;</div>
+            <div class="step-label">Speak</div>
+            <div class="step-desc">Talk naturally, Whisper handles the rest</div>
+        </div>
+        <span class="step-arrow">&rarr;</span>
+        <div class="step">
+            <div class="step-icon">&#x2328;</div>
+            <div class="step-label">Release</div>
+            <div class="step-desc">Text appears at your cursor, any app</div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+    <div class="section-label">Features</div>
+    <div class="section-title">Built for developers.</div>
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(99,102,241,0.12);">&#x1F512;</div>
+            <h3>Completely Private</h3>
+            <p>All processing happens on your Mac. No audio is ever sent anywhere. No cloud, no API keys, no telemetry.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(52,211,153,0.12);">&#x26A1;</div>
+            <h3>Sub-Second Speed</h3>
+            <p>Metal GPU acceleration on Apple Silicon. Beam search for accuracy, greedy decoding for speed. VAD trims silence automatically.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(251,146,60,0.12);">&#x1F4BB;</div>
+            <h3>Works Everywhere</h3>
+            <p>Terminal, VS Code, Xcode, Slack, browsers, email. Text injection via CGEvent works in any app that accepts keyboard input.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(167,139,250,0.12);">&#x1F4DA;</div>
+            <h3>500+ Dev Terms</h3>
+            <p>Built-in vocabulary biases Whisper toward API, GraphQL, Kubernetes, PostgreSQL, and hundreds more. Add your own custom terms.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(56,189,248,0.12);">&#x2728;</div>
+            <h3>Smart Corrections</h3>
+            <p>Auto-capitalizes, fixes 100+ term casings (api&rarr;API), adds punctuation, converts number words to digits. Under 5ms overhead.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon" style="background: rgba(244,114,182,0.12);">&#x2699;</div>
+            <h3>Fully Configurable</h3>
+            <p>Rebind the hotkey, choose your model, toggle corrections, add custom vocabulary, select your mic. Native SwiftUI settings.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Comparison -->
+<section class="comparison">
+    <div class="section-label">Why WhisperDictation</div>
+    <div class="section-title">Free &ne; worse.</div>
+    <table>
+        <thead>
+            <tr>
+                <th></th>
+                <th>WhisperDictation</th>
+                <th>Willow / WisprFlow</th>
+                <th>Apple Dictation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Price</td>
+                <td><strong style="color: var(--green);">Free forever</strong></td>
+                <td>$8-15/mo</td>
+                <td>Free</td>
+            </tr>
+            <tr>
+                <td>Privacy</td>
+                <td><span class="check">&#x2713;</span> 100% local</td>
+                <td><span class="cross">&#x2717;</span> Cloud</td>
+                <td><span class="cross">&#x2717;</span> Apple servers</td>
+            </tr>
+            <tr>
+                <td>Dev terms</td>
+                <td><span class="check">&#x2713;</span> 500+ built-in</td>
+                <td>Limited</td>
+                <td><span class="cross">&#x2717;</span> Poor</td>
+            </tr>
+            <tr>
+                <td>Custom vocabulary</td>
+                <td><span class="check">&#x2713;</span> Names & terms</td>
+                <td>Varies</td>
+                <td><span class="cross">&#x2717;</span> No</td>
+            </tr>
+            <tr>
+                <td>Open source</td>
+                <td><span class="check">&#x2713;</span> MIT</td>
+                <td><span class="cross">&#x2717;</span></td>
+                <td><span class="cross">&#x2717;</span></td>
+            </tr>
+            <tr>
+                <td>Works offline</td>
+                <td><span class="check">&#x2713;</span> Always</td>
+                <td><span class="cross">&#x2717;</span></td>
+                <td>Partial</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<!-- Models -->
+<section class="models" id="models">
+    <div class="section-label">Models</div>
+    <div class="section-title">Pick your speed.</div>
+
+    <div class="model-card">
+        <div class="model-tier" style="background: rgba(52,211,153,0.12);">&#x26A1;</div>
+        <div class="model-info">
+            <h4>Base Q5</h4>
+            <div class="model-meta">
+                <span>57 MB</span>
+                <span>~0.2s</span>
+                <span>Good accuracy</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="model-card recommended">
+        <div class="model-tier" style="background: var(--accent-glow);">&#x1F3AF;</div>
+        <div class="model-info">
+            <h4>Small Q5 <span class="model-badge">Recommended</span></h4>
+            <div class="model-meta">
+                <span>181 MB</span>
+                <span>~0.4s</span>
+                <span>Better accuracy</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="model-card">
+        <div class="model-tier" style="background: rgba(167,139,250,0.12);">&#x1F9E0;</div>
+        <div class="model-info">
+            <h4>Medium Q5</h4>
+            <div class="model-meta">
+                <span>515 MB</span>
+                <span>~1.0s</span>
+                <span>Best accuracy</span>
+            </div>
+        </div>
+    </div>
+
+    <p style="margin-top: 16px; font-size: 13px; color: var(--text-secondary); text-align: center;">
+        Speed measured for 5-second audio on Apple Silicon with Metal GPU. Download models in-app via Settings &gt; Model.
+    </p>
+</section>
+
+<!-- Install -->
+<section class="install" id="install">
+    <div class="section-label">Get Started</div>
+    <div class="section-title">Up and running in 2 minutes.</div>
+
+    <div class="install-steps">
+        <div class="install-step">
+            <div class="install-num">1</div>
+            <p>Download <strong>WhisperDictation.dmg</strong> from <a href="https://github.com/sam-pop/WhisperDictation/releases/latest" style="color: var(--accent);">Releases</a></p>
+        </div>
+        <div class="install-step">
+            <div class="install-num">2</div>
+            <p>Open the DMG and drag WhisperDictation to <strong>Applications</strong></p>
+        </div>
+        <div class="install-step">
+            <div class="install-num">3</div>
+            <p>If macOS blocks it: <code>xattr -cr /Applications/WhisperDictation.app</code></p>
+        </div>
+        <div class="install-step">
+            <div class="install-num">4</div>
+            <p>Launch and grant <strong>Microphone</strong> + <strong>Accessibility</strong> permissions</p>
+        </div>
+        <div class="install-step">
+            <div class="install-num">5</div>
+            <p>Go to Settings &gt; Model and download <strong>Small Q5</strong> (181 MB)</p>
+        </div>
+    </div>
+
+    <div class="source-block">
+        <div class="source-header">Or build from source</div>
+        <pre><span># Clone and build</span>
+<span class="cmd">git clone --recurse-submodules https://github.com/sam-pop/WhisperDictation.git</span>
+<span class="cmd">cd WhisperDictation</span>
+<span class="cmd">make whisper && make model && make run</span></pre>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <div class="footer-inner">
+        <div class="footer-links">
+            <a href="https://github.com/sam-pop/WhisperDictation">GitHub</a>
+            <a href="https://github.com/sam-pop/WhisperDictation/releases">Releases</a>
+            <a href="https://github.com/sam-pop/WhisperDictation/issues">Issues</a>
+            <a href="https://github.com/sam-pop/WhisperDictation/blob/main/LICENSE">MIT License</a>
+        </div>
+        <p class="footer-copy">
+            Built with whisper.cpp + SwiftUI + Metal &mdash; by <a href="https://github.com/sam-pop" style="color: var(--text); text-decoration: none;">sam-pop</a>
+        </p>
+    </div>
+</footer>
+
+</body>
+</html>
