@@ -34,7 +34,7 @@ DictationEngine (@Observable, orchestrates everything)
 
 **WhisperBridge** wraps whisper.cpp's C API through `WhisperDictation-Bridging-Header.h → lib/whisper.h`. Loads model once at startup, runs inference on a dedicated dispatch queue. Marked `@unchecked Sendable` (thread safety via the queue). Uses beam search on Apple Silicon (GPU), greedy on Intel (CPU). Supports VAD (Silero model) to trim silence before inference.
 
-**Audio format**: whisper.cpp requires 16kHz mono Float32. AudioCapture installs a tap with the native input format and converts via AVAudioConverter in the callback. Never pass a custom format to `installTap` — it throws uncatchable NSExceptions.
+**Audio format**: whisper.cpp requires 16kHz mono Float32. AudioCapture reads `inputNode.outputFormat(forBus:0)` AFTER `engine.prepare()`, passes that format to `installTap`, and converts via `AVAudioConverter` with `converter.reset()` before each callback. The converter is created upfront from the hardware format (not lazily). Do NOT use `nil` format with `installTap` — it causes the tap callback to never fire on some hardware.
 
 **Text injection**: CGEvent with `keyboardSetUnicodeString` in 16-char UTF-16 chunks, 5ms delay. Must run off MainActor to avoid blocking UI.
 
@@ -65,10 +65,13 @@ DictationEngine (@Observable, orchestrates everything)
 - **Swift `print()` not visible in terminal**: whisper.cpp logs to stderr but Swift `print()` goes to buffered stdout. Use `fputs("...\n", stderr)` for diagnostic logs.
 - **`CharacterSet.punctuation` doesn't exist** — use `.punctuationCharacters` in Swift.
 - **Accessibility permission goes stale** when the binary is re-signed. `AXIsProcessTrusted()` returns true but the event tap receives zero events. User must toggle the permission off/on in System Settings. The watchdog timer detects and re-enables disabled taps.
-- **Always pass `nil` format to `AVAudioNode.installTap`** — passing any explicit format (even the node's own outputFormat) can throw an uncatchable NSException when the device or engine state changes. Pass `nil` and handle conversion in the callback via AVAudioConverter.
+- **`installTap` format**: Pass the hardware format from `inputNode.outputFormat(forBus:0)` read AFTER `engine.prepare()`. Do NOT pass `nil` (tap callback never fires on some hardware). Do NOT pass a custom format like 16kHz (throws uncatchable NSException). Create `AVAudioConverter` upfront and call `converter.reset()` before each conversion.
 - **TextInjector.type() uses a dedicated DispatchQueue** — never call it on MainActor (Thread.sleep blocks UI) or on a Swift cooperative thread pool (starves it). It has its own serial queue internally.
 - **NSSound must be called on main thread** — `SoundFeedback.playDoneSound()` etc. must be inside `MainActor.run` or dispatched to main queue.
 - **Metal GPU disabled on Intel Macs** (`#if arch(arm64)`) — whisper.cpp Metal kernels are optimized for Apple Silicon, slower on AMD GPUs.
+- **`xcodegen generate` overwrites Info.plist** — resets `CFBundleIconFile`, `LSUIElement`, etc. to defaults. Restore `CFBundleIconFile` to `AppIcon` after running. Makefile build is unaffected.
+- **Singletons need `@unchecked Sendable`** — all `ObservableObject` singletons must conform for xcodebuild compatibility (Swift 6 strict concurrency).
+- **Vocabulary prompt must stay under ~500 words** — Whisper's 1024 token limit. Exceeding it causes `whisper_tokenize: too many resulting tokens` and degrades accuracy.
 
 ## Permissions
 
