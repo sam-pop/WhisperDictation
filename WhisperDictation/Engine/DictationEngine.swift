@@ -78,9 +78,6 @@ final class DictationEngine {
                 // Pre-warm GPU: JIT-compile Metal shaders with a tiny dummy inference
                 bridge.warmup()
 
-                // Start pre-recording buffer (captures 1s before key press)
-                try? self.audioCapture.startPreRecording()
-
                 await MainActor.run {
                     self.whisperBridge = bridge
                     self.isModelLoaded = true
@@ -98,7 +95,6 @@ final class DictationEngine {
         isModelLoaded = false
         modelLoadError = nil
         whisperBridge = nil
-        audioCapture.stopPreRecording()
         loadModelAsync()
     }
 
