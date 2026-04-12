@@ -25,6 +25,8 @@ final class DictationEngine {
     private let minRecordingDuration: TimeInterval = 0.3
     private var recordingStartTime: Date?
 
+    private var accessibilityPoller: Timer?
+
     init() {
         let axTrusted = AXIsProcessTrusted()
         fputs("[DictationEngine] Init. Accessibility: \(axTrusted)\n", stderr)
@@ -32,6 +34,31 @@ final class DictationEngine {
         hotkeyMonitor?.start()
         loadModelAsync()
         LaunchAtLoginHelper.reconcile()
+
+        // If Accessibility isn't granted yet, poll until it is and restart the hotkey monitor
+        if !axTrusted {
+            startAccessibilityPoller()
+        }
+    }
+
+    private func startAccessibilityPoller() {
+        accessibilityPoller?.invalidate()
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] timer in
+            if AXIsProcessTrusted() {
+                fputs("[DictationEngine] Accessibility granted! Restarting hotkey monitor.\n", stderr)
+                timer.invalidate()
+                self?.accessibilityPoller = nil
+                self?.restartHotkeyMonitor()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        accessibilityPoller = timer
+    }
+
+    func restartHotkeyMonitor() {
+        hotkeyMonitor?.stop()
+        setupHotkeyMonitor()
+        hotkeyMonitor?.start()
     }
 
     // MARK: - Model Loading
