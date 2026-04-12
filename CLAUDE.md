@@ -13,6 +13,11 @@ make dmg          # Build + create DMG installer
 make clean        # Remove build/ directory
 ```
 
+**Run tests** (requires xcodegen):
+```bash
+xcodegen generate && xcodebuild test -project WhisperDictation.xcodeproj -scheme WhisperDictation -destination "platform=macOS"
+```
+
 The Makefile compiles directly via `xcrun swiftc` with a bridging header — it does **not** use xcodebuild. An XcodeGen `project.yml` exists for IDE use (`xcodegen generate` to regenerate `.xcodeproj`).
 
 **When adding new .swift files**, add them to `SWIFT_FILES` in the Makefile and add the framework to `FRAMEWORKS` if needed. There is no glob — all sources are listed explicitly.
@@ -45,8 +50,8 @@ DictationEngine (@Observable, orchestrates everything)
 - **Settings window** uses a `Window` scene with `openWindow(id: "settings")` — `SettingsLink` and `Settings` scene don't work in `LSUIElement` menu bar apps.
 - **ModelManager** stores models in `~/Library/Application Support/WhisperDictation/Models/`. Supports full precision and quantized (Q5) models, plus Silero VAD model.
 - **HotkeyMonitor** uses `CGEvent.tapCreate` with `Unmanaged.passRetained`. Must store the pointer and release in `stop()`. Has a 2-second watchdog timer that re-enables the tap if macOS silently disables it (happens when binary is re-signed).
+- **Version number**: `Info.plist` `CFBundleShortVersionString`. Update when releasing. Displayed in menu bar dropdown and settings sidebar via `Bundle.main.infoDictionary`.
 - **TextCorrector** runs <5ms post-processing: acronym/term casing (100+ dev terms), sentence capitalization, punctuation cleanup.
-- **Pre-recording buffer**: AudioCapture maintains a 1-second circular buffer before key press. `startRecording()` stops the pre-record engine, drains the buffer as a head start, then creates a new engine. `stopRecording()` restarts pre-recording after 0.3s delay (guarded against double-engine).
 - **C callbacks in WhisperBridge**: Use `Unmanaged.passRetained` to create a context object, pass its opaque pointer as `user_data`, and `release()` in a `defer` after `whisper_full` returns. The callback uses `takeUnretainedValue()`. Do not keep a separate local Swift reference — the Unmanaged retain handles lifetime.
 
 ## whisper.cpp Integration
@@ -71,6 +76,7 @@ DictationEngine (@Observable, orchestrates everything)
 - **Metal GPU disabled on Intel Macs** (`#if arch(arm64)`) — whisper.cpp Metal kernels are optimized for Apple Silicon, slower on AMD GPUs.
 - **`xcodegen generate` overwrites Info.plist** — resets `CFBundleIconFile`, `LSUIElement`, etc. to defaults. Restore `CFBundleIconFile` to `AppIcon` after running. Makefile build is unaffected.
 - **Singletons need `@unchecked Sendable`** — all `ObservableObject` singletons must conform for xcodebuild compatibility (Swift 6 strict concurrency).
+- **Tests must not assert hardcoded UserDefaults values** — user may have changed hotkey, model, or device. Assert ranges/invariants instead (e.g., `hotkeyKeyCode >= 0` not `== 61`).
 - **Vocabulary prompt must stay under ~500 words** — Whisper's 1024 token limit. Exceeding it causes `whisper_tokenize: too many resulting tokens` and degrades accuracy.
 
 ## Permissions
