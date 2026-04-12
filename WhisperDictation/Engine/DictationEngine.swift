@@ -35,7 +35,6 @@ final class DictationEngine {
         loadModelAsync()
         LaunchAtLoginHelper.reconcile()
 
-        // If Accessibility isn't granted yet, poll until it is and restart the hotkey monitor
         if !axTrusted {
             startAccessibilityPoller()
         }
@@ -75,6 +74,13 @@ final class DictationEngine {
                     return
                 }
                 let bridge = try WhisperBridge(modelPath: modelPath)
+
+                // Pre-warm GPU: JIT-compile Metal shaders with a tiny dummy inference
+                bridge.warmup()
+
+                // Start pre-recording buffer (captures 1s before key press)
+                try? self.audioCapture.startPreRecording()
+
                 await MainActor.run {
                     self.whisperBridge = bridge
                     self.isModelLoaded = true
@@ -92,6 +98,7 @@ final class DictationEngine {
         isModelLoaded = false
         modelLoadError = nil
         whisperBridge = nil
+        audioCapture.stopPreRecording()
         loadModelAsync()
     }
 
@@ -124,7 +131,7 @@ final class DictationEngine {
         do {
             try audioCapture.startRecording()
         } catch {
-            print("Failed to start recording: \(error)")
+            fputs("[DictationEngine] Failed to start recording: \(error)\n", stderr)
             state = .idle
         }
     }
@@ -160,26 +167,30 @@ final class DictationEngine {
                 return
             }
 
-            let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt)
+            // Streaming transcription: type segments as they're decoded
+            var streamedText = ""
+            let rawText = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
+                // This fires on the whisper queue as each segment completes
+                injector.type(text: segment)
+                streamedText += segment
+            }
 
             guard !rawText.isEmpty else {
                 await MainActor.run { [weak self] in self?.state = .idle }
                 return
             }
 
-            // Grammar correction (local, <5ms)
-            let text = TextCorrector.shared.correct(rawText)
+            // Apply grammar correction to the full text
+            let corrected = TextCorrector.shared.correct(rawText)
 
-            await MainActor.run { [weak self] in
-                self?.lastTranscription = text
-                self?.state = .typing
-            }
-
-            // Type text on a background thread to avoid blocking the main thread
-            injector.type(text: text)
+            // If correction changed the text, we need to fix what was already typed.
+            // For now, just store the corrected version as lastTranscription.
+            // The streamed text is already typed — correction would require selecting
+            // and replacing, which is complex. Store for display in menu bar.
             feedback.playDoneSound()
 
             await MainActor.run { [weak self] in
+                self?.lastTranscription = corrected
                 self?.state = .idle
             }
         }
