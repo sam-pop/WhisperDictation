@@ -56,9 +56,8 @@ final class TextCorrector {
         func flushNumber() {
             guard !numberWords.isEmpty else { return }
             if let value = parseNumberWords(numberWords) {
-                let formatter = NumberFormatter()
-                formatter.numberStyle = .decimal
-                result.append(formatter.string(from: NSNumber(value: value)) ?? "\(value)")
+                // Format with commas for thousands: 1000 → "1,000"
+                result.append(formatNumber(value))
             } else {
                 result.append(contentsOf: numberWords)
             }
@@ -90,6 +89,21 @@ final class TextCorrector {
         flushNumber()
 
         return result.joined(separator: " ")
+    }
+
+    private func formatNumber(_ value: Int) -> String {
+        if value >= 1000 {
+            // Add commas: 1000 → "1,000", 1000000 → "1,000,000"
+            var s = String(value)
+            var i = s.count - 3
+            while i > 0 {
+                let idx = s.index(s.startIndex, offsetBy: i)
+                s.insert(",", at: idx)
+                i -= 3
+            }
+            return s
+        }
+        return String(value)
     }
 
     private func parseNumberWords(_ words: [String]) -> Int? {
@@ -219,10 +233,12 @@ final class TextCorrector {
         // Trim
         result = result.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Add period at end if missing punctuation (but not for single words or very short text)
+        // Add period at end if missing punctuation
+        // But not for: short text, numbers, or text already ending with punctuation
         if result.count > 3,
            let last = result.last,
-           !".!?,;:\"')".contains(last) {
+           !".!?,;:\"')".contains(last),
+           !last.isNumber {
             result += "."
         }
 
