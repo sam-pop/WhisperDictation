@@ -46,6 +46,8 @@ DictationEngine (@Observable, orchestrates everything)
 - **ModelManager** stores models in `~/Library/Application Support/WhisperDictation/Models/`. Supports full precision and quantized (Q5) models, plus Silero VAD model.
 - **HotkeyMonitor** uses `CGEvent.tapCreate` with `Unmanaged.passRetained`. Must store the pointer and release in `stop()`. Has a 2-second watchdog timer that re-enables the tap if macOS silently disables it (happens when binary is re-signed).
 - **TextCorrector** runs <5ms post-processing: acronym/term casing (100+ dev terms), sentence capitalization, punctuation cleanup.
+- **Pre-recording buffer**: AudioCapture maintains a 1-second circular buffer before key press. `startRecording()` stops the pre-record engine, drains the buffer as a head start, then creates a new engine. `stopRecording()` restarts pre-recording after 0.3s delay (guarded against double-engine).
+- **C callbacks in WhisperBridge**: Use `Unmanaged.passRetained` to create a context object, pass its opaque pointer as `user_data`, and `release()` in a `defer` after `whisper_full` returns. The callback uses `takeUnretainedValue()`. Do not keep a separate local Swift reference — the Unmanaged retain handles lifetime.
 
 ## whisper.cpp Integration
 
@@ -63,8 +65,9 @@ DictationEngine (@Observable, orchestrates everything)
 - **Swift `print()` not visible in terminal**: whisper.cpp logs to stderr but Swift `print()` goes to buffered stdout. Use `fputs("...\n", stderr)` for diagnostic logs.
 - **`CharacterSet.punctuation` doesn't exist** — use `.punctuationCharacters` in Swift.
 - **Accessibility permission goes stale** when the binary is re-signed. `AXIsProcessTrusted()` returns true but the event tap receives zero events. User must toggle the permission off/on in System Settings. The watchdog timer detects and re-enables disabled taps.
-- **Never pass a custom format to `AVAudioNode.installTap`** — it throws an uncatchable NSException. Always tap with native format and convert manually.
-- **TextInjector.type() must not run on MainActor** — it uses Thread.sleep which blocks the main thread.
+- **Always pass `nil` format to `AVAudioNode.installTap`** — passing any explicit format (even the node's own outputFormat) can throw an uncatchable NSException when the device or engine state changes. Pass `nil` and handle conversion in the callback via AVAudioConverter.
+- **TextInjector.type() uses a dedicated DispatchQueue** — never call it on MainActor (Thread.sleep blocks UI) or on a Swift cooperative thread pool (starves it). It has its own serial queue internally.
+- **NSSound must be called on main thread** — `SoundFeedback.playDoneSound()` etc. must be inside `MainActor.run` or dispatched to main queue.
 - **Metal GPU disabled on Intel Macs** (`#if arch(arm64)`) — whisper.cpp Metal kernels are optimized for Apple Silicon, slower on AMD GPUs.
 
 ## Permissions
