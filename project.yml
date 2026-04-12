@@ -46,25 +46,21 @@ targets:
         Release:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
     dependencies:
-      - framework: Accelerate.framework
-        implicit: true
-      - framework: Metal.framework
-        implicit: true
-      - framework: MetalKit.framework
-        implicit: true
-      - framework: AVFoundation.framework
-        implicit: true
-      - framework: CoreGraphics.framework
-        implicit: true
-      - framework: AppKit.framework
-        implicit: true
+      - sdk: Accelerate.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreGraphics.framework
+      - sdk: AppKit.framework
+      - sdk: CoreAudio.framework
+      - sdk: ServiceManagement.framework
     info:
       path: WhisperDictation/Info.plist
       properties:
         LSUIElement: true
         NSMicrophoneUsageDescription: "WhisperDictation needs microphone access to capture your voice for speech-to-text transcription."
         NSPrincipalClass: NSApplication
-        CFBundleIconFile: ""
+        CFBundleIconFile: AppIcon
     entitlements:
       path: WhisperDictation/WhisperDictation.entitlements
       properties:
