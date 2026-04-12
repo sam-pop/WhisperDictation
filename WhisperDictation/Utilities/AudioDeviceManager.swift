@@ -34,11 +34,15 @@ final class AudioDeviceManager: ObservableObject {
         guard let uid = AppSettings.shared.selectedAudioDeviceUID else { return }
         guard let device = inputDevices.first(where: { $0.uid == uid }) else { return }
 
-        // Set the device on the engine's input node AudioUnit — does NOT change system default
         let inputNode = engine.inputNode
+        guard let audioUnit = inputNode.audioUnit else {
+            fputs("[AudioDeviceManager] AudioUnit not available yet\n", stderr)
+            return
+        }
+
         var deviceID = device.id
         let status = AudioUnitSetProperty(
-            inputNode.audioUnit!,
+            audioUnit,
             kAudioOutputUnitProperty_CurrentDevice,
             kAudioUnitScope_Global,
             0,

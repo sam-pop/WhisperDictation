@@ -35,7 +35,7 @@ final class AudioCapture {
         let inputFormat = inputNode.outputFormat(forBus: 0)
         let conv = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
 
-        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { [weak self] buffer, _ in
             guard let self else { return }
             let samples = self.convertToFloat(buffer, converter: conv)
             guard !samples.isEmpty else { return }
@@ -86,11 +86,18 @@ final class AudioCapture {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        // prepare() must come before AudioUnit property changes
-        engine.prepare()
+        // Apply selected device, then prepare the engine.
+        // Accessing inputNode above forces graph init, so AudioUnit is available.
         AudioDeviceManager.shared.applySelectedDevice(to: engine)
+        engine.prepare()
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Validate format before installing tap — installTap throws uncatchable NSException on invalid format
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw AudioCaptureError.invalidInputFormat
+        }
+
         let conv = AVAudioConverter(from: inputFormat, to: Self.desiredFormat)
 
         bufferLock.lock()
@@ -99,7 +106,9 @@ final class AudioCapture {
         audioBuffer = preBuffer
         bufferLock.unlock()
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        // Pass nil format to let the engine use the input node's native format
+        // This avoids NSException from format mismatch
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self else { return }
             self.processBuffer(buffer)
         }
@@ -180,5 +189,16 @@ final class AudioCapture {
 
     var isRecording: Bool {
         audioEngine?.isRunning ?? false
+    }
+}
+
+enum AudioCaptureError: LocalizedError {
+    case invalidInputFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidInputFormat:
+            return "Audio input format is invalid (sample rate or channels are zero)."
+        }
     }
 }
