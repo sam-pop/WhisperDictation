@@ -17,7 +17,9 @@ final class AudioCapture {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        // Read the input format BEFORE prepare — this is the hardware format
+        // prepare() FIRST — settles the audio hardware format
+        engine.prepare()
+
         let hwFormat = inputNode.outputFormat(forBus: 0)
         fputs("[AudioCapture] Hardware format: \(hwFormat.sampleRate)Hz \(hwFormat.channelCount)ch\n", stderr)
 
@@ -25,26 +27,26 @@ final class AudioCapture {
             throw AudioCaptureError.invalidFormat
         }
 
-        engine.prepare()
-
         let converter = AVAudioConverter(from: hwFormat, to: Self.desiredFormat)!
 
         bufferLock.lock()
         audioBuffer.removeAll()
         bufferLock.unlock()
 
-        // Use the hardware format for the tap — matches what the node outputs
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { [weak self] buffer, _ in
+            fputs(".", stderr) // Heartbeat — proves callback is firing
             guard let self else { return }
-
-            converter.reset()
 
             let ratio = Self.sampleRate / hwFormat.sampleRate
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
-            guard let converted = AVAudioPCMBuffer(pcmFormat: Self.desiredFormat, frameCapacity: capacity) else { return }
+            guard let converted = AVAudioPCMBuffer(pcmFormat: Self.desiredFormat, frameCapacity: capacity) else {
+                fputs("X", stderr)
+                return
+            }
 
             var consumed = false
-            let status = converter.convert(to: converted, error: nil) { _, outStatus in
+            var convErr: NSError?
+            let status = converter.convert(to: converted, error: &convErr) { _, outStatus in
                 if consumed {
                     outStatus.pointee = .noDataNow
                     return nil
@@ -54,13 +56,19 @@ final class AudioCapture {
                 return buffer
             }
 
-            if (status == .haveData || status == .endOfStream),
-               converted.frameLength > 0,
-               let data = converted.floatChannelData {
+            if let convErr {
+                fputs("[E:\(convErr.code)]", stderr)
+                return
+            }
+
+            if converted.frameLength > 0, let data = converted.floatChannelData {
                 let samples = Array(UnsafeBufferPointer(start: data[0], count: Int(converted.frameLength)))
                 self.bufferLock.lock()
                 self.audioBuffer.append(contentsOf: samples)
                 self.bufferLock.unlock()
+                fputs("+", stderr) // successful conversion
+            } else {
+                fputs("[s:\(status.rawValue) f:\(converted.frameLength)]", stderr)
             }
         }
 

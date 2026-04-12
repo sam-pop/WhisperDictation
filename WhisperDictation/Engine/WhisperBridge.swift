@@ -121,7 +121,8 @@ final class WhisperBridge: @unchecked Sendable {
             params.translate = false
             params.suppress_nst = true
             params.suppress_regex = UnsafePointer(suppressCStr)
-            params.no_context = false
+            // true = each transcription is independent (prevents hallucination carry-over)
+            params.no_context = true
 
             // Must be false for streaming — allows multiple segment callbacks during decode
             params.single_segment = false
