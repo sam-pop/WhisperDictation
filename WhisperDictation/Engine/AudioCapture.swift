@@ -48,8 +48,11 @@ final class AudioCapture {
                 frameCapacity: outputCapacity
             ) else { return }
 
-            // Do NOT call conv.reset() here — it destroys the polyphase filter state
-            // needed for continuous sample rate conversion across callbacks
+            // Reset converter between callbacks — required because we feed one buffer
+            // per convert() call with the inputConsumed pattern. Without reset, the
+            // converter's internal state expects a continuous stream and produces empty output.
+            conv.reset()
+
             var inputConsumed = false
             let status = conv.convert(to: convertedBuffer, error: nil) { _, outStatus in
                 if inputConsumed {
