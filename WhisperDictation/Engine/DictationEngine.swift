@@ -153,7 +153,18 @@ final class DictationEngine {
         state = .processing
 
         let bridge = self.whisperBridge
-        let prompt = AppSettings.shared.vocabularyPrompt
+        let basePrompt = AppSettings.shared.vocabularyPrompt
+        let customTerms = AppSettings.shared.customTerms
+        let prompt: String
+        if customTerms.isEmpty {
+            prompt = basePrompt
+        } else {
+            // Cap custom terms to stay under whisper's ~1024 token (~750 word) limit
+            let baseWordCount = basePrompt.split(separator: " ").count
+            let budget = max(0, 700 - baseWordCount)
+            let termsToAdd = Array(customTerms.prefix(budget))
+            prompt = termsToAdd.isEmpty ? basePrompt : basePrompt + ", " + termsToAdd.joined(separator: ", ")
+        }
         let injector = self.textInjector
         let feedback = self.soundFeedback
 

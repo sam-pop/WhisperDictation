@@ -17,6 +17,7 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         case grammarCorrectionEnabled
         case selectedAudioDeviceUID
         case numberConversionEnabled
+        case customTerms
     }
 
     // MARK: - Properties
@@ -61,6 +62,26 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     var numberConversionEnabled: Bool {
         get { defaults.object(forKey: Key.numberConversionEnabled.rawValue) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.numberConversionEnabled.rawValue); objectWillChange.send() }
+    }
+
+    var customTerms: [String] {
+        get { defaults.stringArray(forKey: Key.customTerms.rawValue) ?? [] }
+        set { defaults.set(newValue, forKey: Key.customTerms.rawValue); objectWillChange.send() }
+    }
+
+    func addCustomTerm(_ term: String) {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var terms = customTerms
+        // Avoid duplicates (case-insensitive)
+        if !terms.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            terms.append(trimmed)
+            customTerms = terms
+        }
+    }
+
+    func removeCustomTerm(_ term: String) {
+        customTerms = customTerms.filter { $0 != term }
     }
 
     /// nil means "use system default"

@@ -3,6 +3,13 @@ import Foundation
 final class TextCorrector: @unchecked Sendable {
     static nonisolated(unsafe) let shared = TextCorrector()
 
+    // MARK: - Custom Terms Cache
+
+    private let cacheQueue = DispatchQueue(label: "TextCorrector.cache")
+    private var cachedTerms: [String] = []
+    private var cachedRegex: NSRegularExpression?
+    private var cachedLookup: [String: String] = [:]  // lowercased → original casing
+
     func correct(_ text: String) -> String {
         guard AppSettings.shared.grammarCorrectionEnabled else { return text }
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -12,6 +19,7 @@ final class TextCorrector: @unchecked Sendable {
             result = convertWordsToNumbers(result)
         }
         result = fixAcronymsAndTerms(result)
+        result = fixCustomTerms(result)
         result = fixCapitalization(result)
         result = fixPunctuation(result)
 
@@ -181,6 +189,37 @@ final class TextCorrector: @unchecked Sendable {
             )
         }
         return result
+    }
+
+    // MARK: - Pass 1.5: Custom User Terms
+
+    private func fixCustomTerms(_ text: String) -> String {
+        let terms = AppSettings.shared.customTerms
+        guard !terms.isEmpty else { return text }
+
+        return cacheQueue.sync {
+            // Rebuild cache only when terms change
+            if terms != cachedTerms {
+                cachedTerms = terms
+                let escaped = terms.map { NSRegularExpression.escapedPattern(for: $0) }
+                let pattern = "(?i)\\b(" + escaped.joined(separator: "|") + ")\\b"
+                cachedRegex = try? NSRegularExpression(pattern: pattern)
+                cachedLookup = Dictionary(terms.map { ($0.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
+            }
+
+            guard let regex = cachedRegex else { return text }
+
+            var result = text
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            for match in matches.reversed() {
+                guard let range = Range(match.range, in: text) else { continue }
+                let matched = String(text[range]).lowercased()
+                if let replacement = cachedLookup[matched] {
+                    result.replaceSubrange(range, with: replacement)
+                }
+            }
+            return result
+        }
     }
 
     // MARK: - Pass 2: Capitalization
