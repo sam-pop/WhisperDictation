@@ -51,8 +51,9 @@ DictationEngine (@Observable, orchestrates everything)
 - **ModelManager** stores models in `~/Library/Application Support/WhisperDictation/Models/`. Supports full precision and quantized (Q5) models, plus Silero VAD model.
 - **HotkeyMonitor** uses `CGEvent.tapCreate` with `Unmanaged.passRetained`. Must store the pointer and release in `stop()`. Has a 2-second watchdog timer that re-enables the tap if macOS silently disables it (happens when binary is re-signed).
 - **Version number**: `Info.plist` `CFBundleShortVersionString`. Update when releasing. Displayed in menu bar dropdown and settings sidebar via `Bundle.main.infoDictionary`.
-- **TextCorrector** runs <5ms post-processing: acronym/term casing (100+ dev terms), sentence capitalization, punctuation cleanup.
+- **TextCorrector** runs <5ms post-processing: acronym/term casing (100+ dev terms), user custom terms (cached combined regex with `cacheQueue` for thread safety), sentence capitalization, punctuation cleanup. Custom terms are stored as `[String]` in UserDefaults via `AppSettings.customTerms`.
 - **C callbacks in WhisperBridge**: Use `Unmanaged.passRetained` to create a context object, pass its opaque pointer as `user_data`, and `release()` in a `defer` after `whisper_full` returns. The callback uses `takeUnretainedValue()`. Do not keep a separate local Swift reference — the Unmanaged retain handles lifetime.
+- **FlowLayout** in SettingsView.swift — custom `Layout` for wrapping pill/tag UIs. Reusable for any flow-wrapped content.
 
 ## whisper.cpp Integration
 
@@ -74,10 +75,11 @@ DictationEngine (@Observable, orchestrates everything)
 - **TextInjector.type() uses a dedicated DispatchQueue** — never call it on MainActor (Thread.sleep blocks UI) or on a Swift cooperative thread pool (starves it). It has its own serial queue internally.
 - **NSSound must be called on main thread** — `SoundFeedback.playDoneSound()` etc. must be inside `MainActor.run` or dispatched to main queue.
 - **Metal GPU disabled on Intel Macs** (`#if arch(arm64)`) — whisper.cpp Metal kernels are optimized for Apple Silicon, slower on AMD GPUs.
-- **`xcodegen generate` overwrites Info.plist** — resets `CFBundleIconFile`, `LSUIElement`, etc. to defaults. Restore `CFBundleIconFile` to `AppIcon` after running. Makefile build is unaffected.
+- **`xcodegen generate` overwrites Info.plist** — resets `CFBundleIconFile`, `CFBundleShortVersionString`, `CFBundleVersion`, `LSUIElement`, etc. to defaults. Restore version numbers and `CFBundleIconFile` to `AppIcon` after running. Makefile build is unaffected.
 - **Singletons need `@unchecked Sendable`** — all `ObservableObject` singletons must conform for xcodebuild compatibility (Swift 6 strict concurrency).
 - **Tests must not assert hardcoded UserDefaults values** — user may have changed hotkey, model, or device. Assert ranges/invariants instead (e.g., `hotkeyKeyCode >= 0` not `== 61`).
-- **Vocabulary prompt must stay under ~500 words** — Whisper's 1024 token limit. Exceeding it causes `whisper_tokenize: too many resulting tokens` and degrades accuracy.
+- **Vocabulary prompt must stay under ~750 words** — Whisper's 1024 token limit. Exceeding it causes `whisper_tokenize: too many resulting tokens` and degrades accuracy. DictationEngine caps custom terms to fit within a 700-word budget. UI limits to 100 custom terms.
+- **SwiftUI `foregroundStyle` ternary pitfall** — `.orange` (Color) and `.tertiary` (ShapeStyle) are different types; a ternary between them won't compile. Use `foregroundColor()` with concrete `Color` values instead.
 
 ## Permissions
 
