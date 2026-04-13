@@ -36,7 +36,7 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 
 ## Features
 
-- **Push-to-talk** -- hold a hotkey, speak, release. Text appears at the cursor instantly.
+- **Push-to-talk OR toggle mode** -- hold a hotkey and release, OR press once to start and once to stop. Toggle mode is **carpal-tunnel friendly** for long dictations and anyone with RSI; it requires a configurable hold (default 1.5s) to prevent accidental activation.
 - **Works in any app** -- Terminal, VS Code, Claude Code, Xcode, Slack, browsers, email -- anywhere you can type
 - **Fast** -- sub-second transcription on Apple Silicon (Metal GPU). Optimized CPU path for Intel Macs.
 - **100% private** -- all audio processing happens locally. Nothing is sent to any server, ever.
