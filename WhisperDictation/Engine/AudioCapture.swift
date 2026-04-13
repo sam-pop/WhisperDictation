@@ -44,6 +44,11 @@ final class AudioCapture {
                 return
             }
 
+            // Per CLAUDE.md: reset before each conversion. Without this, the converter's
+            // internal state expects a continuous stream and produces empty output across
+            // discrete tap-callback buffers.
+            converter.reset()
+
             var consumed = false
             var convErr: NSError?
             let status = converter.convert(to: converted, error: &convErr) { _, outStatus in

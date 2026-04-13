@@ -150,6 +150,9 @@ final class DictationEngine {
     private func scheduleToggleAction() {
         cancelPendingToggle()
         isHoldingForToggle = true
+        // Capture the duration ONCE at schedule time. We pass this same value to the
+        // trim path so the audio trimmed at stop matches what was actually waited out,
+        // even if the slider value changes between schedule and stop.
         let duration = AppSettings.shared.toggleHoldDuration
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -161,7 +164,7 @@ final class DictationEngine {
             case .idle:
                 self.startRecording()
             case .recording:
-                self.stopRecordingAndTranscribe(triggeredByToggleHold: true)
+                self.stopRecordingAndTranscribe(trimTrailingSeconds: duration)
             case .processing, .typing:
                 // Silent no-op: app is busy, ignore the gesture.
                 break
@@ -194,13 +197,14 @@ final class DictationEngine {
         }
     }
 
-    private func stopRecordingAndTranscribe(triggeredByToggleHold: Bool = false) {
+    /// - Parameter trimTrailingSeconds: number of seconds to trim from the end of the audio
+    ///   buffer before transcription. Used by toggle mode to discard the silent hold-to-stop
+    ///   interval (otherwise Whisper hallucinates trailing punctuation/filler from the silence).
+    ///   Push-to-talk passes 0.
+    private func stopRecordingAndTranscribe(trimTrailingSeconds: TimeInterval = 0) {
         guard state == .recording else { return }
 
-        // In toggle mode, trim the silent hold-to-stop interval so Whisper
-        // doesn't hallucinate trailing punctuation from the silence.
-        let trim = triggeredByToggleHold ? AppSettings.shared.toggleHoldDuration : 0
-        let audioBuffer = audioCapture.stopRecording(trimTrailingSeconds: trim)
+        let audioBuffer = audioCapture.stopRecording(trimTrailingSeconds: trimTrailingSeconds)
         soundFeedback.playStopSound()
 
         // Check minimum duration
