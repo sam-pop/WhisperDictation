@@ -82,6 +82,18 @@ final class HotkeyMonitor {
             if !CGEvent.tapIsEnabled(tap: tap) {
                 fputs("[HotkeyMonitor] Event tap was disabled by macOS! Re-enabling...\n", stderr)
                 CGEvent.tapEnable(tap: tap, enable: true)
+                // The tap was disabled — any in-flight key-down lost its key-up event.
+                // Reset isKeyHeld so the next press is accepted, AND synthesize the missed
+                // key-up so DictationEngine can recover (otherwise it stays stuck in
+                // .recording for push-to-talk, or in `isHoldingForToggle = true` with a
+                // pending work item for toggle mode).
+                os_unfair_lock_lock(self.lock)
+                let wasHeld = self.isKeyHeld
+                self.isKeyHeld = false
+                os_unfair_lock_unlock(self.lock)
+                if wasHeld {
+                    DispatchQueue.main.async { self.onKeyUp() }
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)

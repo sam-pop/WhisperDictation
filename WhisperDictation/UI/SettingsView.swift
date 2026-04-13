@@ -213,8 +213,51 @@ private struct GeneralSection: View {
     var body: some View {
         VStack(spacing: 14) {
             SettingsCard(colorScheme: colorScheme) {
-                CardHeader("Push-to-Talk", subtitle: "Hold key to record, release to transcribe")
+                CardHeader(
+                    "Hotkey",
+                    subtitle: settings.hotkeyMode == .pushToTalk
+                        ? "Hold key to record, release to transcribe"
+                        : "Press to start, press to stop — easier on the wrists"
+                )
                 HotkeyRecorder(keyCode: $settings.hotkeyKeyCode, colorScheme: colorScheme)
+
+                Picker("Mode", selection: $settings.hotkeyMode) {
+                    Text("Push-to-talk").tag(AppSettings.HotkeyMode.pushToTalk)
+                    Text("Toggle — easier on the wrists").tag(AppSettings.HotkeyMode.toggle)
+                }
+                .pickerStyle(.segmented)
+                .font(.system(size: 13))
+                .accessibilityLabel("Hotkey activation mode")
+
+                if settings.hotkeyMode == .toggle {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "hand.raised.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11))
+                        Text("No need to hold the key while you talk — friendlier for long dictations and anyone managing carpal tunnel or RSI.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 4)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Hold duration to activate")
+                                .font(.system(size: 13))
+                            Spacer()
+                            Text(String(format: "%.1fs", settings.toggleHoldDuration))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $settings.toggleHoldDuration, in: 0.5...3.0, step: 0.1)
+                        Text("How long to hold the hotkey to start or stop. Longer values prevent accidental activation when the key is used in shortcuts.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
             }
 
             SettingsCard(colorScheme: colorScheme) {

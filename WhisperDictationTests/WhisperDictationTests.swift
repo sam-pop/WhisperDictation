@@ -22,6 +22,45 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(AppSettings.shared.minimumRecordingDuration, 0.3)
     }
 
+    func testHotkeyModeRoundTrips() {
+        let settings = AppSettings.shared
+        let original = settings.hotkeyMode
+
+        settings.hotkeyMode = .toggle
+        XCTAssertEqual(settings.hotkeyMode, .toggle)
+
+        settings.hotkeyMode = .pushToTalk
+        XCTAssertEqual(settings.hotkeyMode, .pushToTalk)
+
+        settings.hotkeyMode = original
+    }
+
+    func testToggleHoldDurationClampsAboveRange() {
+        let settings = AppSettings.shared
+        let original = settings.toggleHoldDuration
+
+        settings.toggleHoldDuration = 999.0
+        XCTAssertLessThanOrEqual(settings.toggleHoldDuration, 3.0)
+
+        settings.toggleHoldDuration = original
+    }
+
+    func testToggleHoldDurationClampsBelowRange() {
+        let settings = AppSettings.shared
+        let original = settings.toggleHoldDuration
+
+        settings.toggleHoldDuration = -5.0
+        XCTAssertGreaterThanOrEqual(settings.toggleHoldDuration, 0.5)
+
+        settings.toggleHoldDuration = original
+    }
+
+    func testToggleHoldDurationInRange() {
+        let value = AppSettings.shared.toggleHoldDuration
+        XCTAssertGreaterThanOrEqual(value, 0.5)
+        XCTAssertLessThanOrEqual(value, 3.0)
+    }
+
     func testGrammarCorrectionDefault() {
         XCTAssertTrue(AppSettings.shared.grammarCorrectionEnabled)
     }

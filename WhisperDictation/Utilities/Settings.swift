@@ -5,10 +5,16 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
     private let defaults = UserDefaults.standard
 
+    // MARK: - Hotkey Mode
+
+    enum HotkeyMode: String { case pushToTalk, toggle }
+
     // MARK: - Keys
 
     private enum Key: String {
         case hotkeyKeyCode
+        case hotkeyMode
+        case toggleHoldDuration
         case selectedModel
         case soundFeedbackEnabled
         case vocabularyPrompt
@@ -25,6 +31,25 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     var hotkeyKeyCode: Int {
         get { defaults.object(forKey: Key.hotkeyKeyCode.rawValue) as? Int ?? 61 } // 61 = right Option
         set { defaults.set(newValue, forKey: Key.hotkeyKeyCode.rawValue); objectWillChange.send() }
+    }
+
+    var hotkeyMode: HotkeyMode {
+        get {
+            let raw = defaults.string(forKey: Key.hotkeyMode.rawValue) ?? HotkeyMode.pushToTalk.rawValue
+            return HotkeyMode(rawValue: raw) ?? .pushToTalk
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.hotkeyMode.rawValue); objectWillChange.send() }
+    }
+
+    /// Seconds the hotkey must be held to trigger start/stop in toggle mode.
+    /// Clamped on write to the slider range so out-of-band programmatic writes can't break the UI.
+    var toggleHoldDuration: Double {
+        get { defaults.object(forKey: Key.toggleHoldDuration.rawValue) as? Double ?? 1.5 }
+        set {
+            let clamped = max(0.5, min(3.0, newValue))
+            defaults.set(clamped, forKey: Key.toggleHoldDuration.rawValue)
+            objectWillChange.send()
+        }
     }
 
     var selectedModel: String {
