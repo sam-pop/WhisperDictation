@@ -8,7 +8,7 @@ struct WhisperDictationApp: App {
         MenuBarExtra {
             MenuBarView(engine: engine)
         } label: {
-            MenuBarIcon(state: engine.state)
+            MenuBarIcon(state: engine.state, isHoldingForToggle: engine.isHoldingForToggle)
         }
         .menuBarExtraStyle(.window)
 
@@ -22,21 +22,29 @@ struct WhisperDictationApp: App {
 
 struct MenuBarIcon: View {
     let state: DictationState
+    let isHoldingForToggle: Bool
 
     var body: some View {
-        switch state {
-        case .idle:
-            Image(systemName: "waveform.badge.mic")
-        case .recording:
-            Image(systemName: "mic.circle.fill")
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, .red)
-        case .processing:
-            Image(systemName: "brain.head.profile.fill")
-                .symbolRenderingMode(.palette)
+        if isHoldingForToggle {
+            // Pulsing dotted ring: visual confirmation the toggle hold is being registered.
+            Image(systemName: "circle.dotted")
                 .foregroundStyle(.orange)
-        case .typing:
-            Image(systemName: "text.cursor")
+                .symbolEffect(.pulse, options: .repeating)
+        } else {
+            switch state {
+            case .idle:
+                Image(systemName: "waveform.badge.mic")
+            case .recording:
+                Image(systemName: "mic.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .red)
+            case .processing:
+                Image(systemName: "brain.head.profile.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.orange)
+            case .typing:
+                Image(systemName: "text.cursor")
+            }
         }
     }
 }
