@@ -401,6 +401,100 @@
             margin-bottom: 18px;
         }
 
+        /* Safety */
+        .safety-section {
+            background: var(--ink);
+            color: var(--cream);
+        }
+        .safety-section .section-tag { color: var(--coral); }
+        .safety-section .section-title { color: var(--cream); }
+        .safety-section .section-desc { color: rgba(250, 247, 242, 0.55); }
+        .safety-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            align-items: start;
+            margin-top: 40px;
+        }
+        .dont-list-card {
+            background: rgba(250, 247, 242, 0.04);
+            border: 1px solid rgba(250, 247, 242, 0.06);
+            border-radius: 14px;
+            padding: 28px;
+        }
+        .dont-list-card h3 {
+            font-family: 'Fraunces', serif;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--cream);
+        }
+        .dont-list-card ul { list-style: none; padding: 0; }
+        .dont-list-card li {
+            display: flex;
+            gap: 12px;
+            align-items: baseline;
+            padding: 7px 0;
+            font-size: 14px;
+            color: rgba(250, 247, 242, 0.8);
+        }
+        .dont-list-card .x {
+            color: var(--coral);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            flex-shrink: 0;
+            width: 14px;
+        }
+        .verify-card {
+            background: #0f0f1e;
+            border: 1px solid rgba(250, 247, 242, 0.06);
+            border-radius: 14px;
+            padding: 24px 28px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .verify-card .lead {
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            color: rgba(250, 247, 242, 0.6);
+            margin-bottom: 18px;
+            line-height: 1.6;
+        }
+        .verify-card .cmd-line {
+            color: var(--cream);
+            font-size: 12px;
+            line-height: 1.9;
+            word-break: break-all;
+        }
+        .verify-card .prompt { color: var(--coral); margin-right: 6px; }
+        .verify-card .out {
+            color: rgba(250, 247, 242, 0.4);
+            font-size: 11px;
+            line-height: 1.85;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(250, 247, 242, 0.06);
+        }
+        .verify-card .comment {
+            color: #16a34a;
+            font-size: 11px;
+            margin-top: 8px;
+            font-style: italic;
+        }
+        .safety-cta {
+            margin-top: 32px;
+            text-align: center;
+        }
+        .safety-cta a {
+            color: var(--coral);
+            font-weight: 500;
+            font-size: 15px;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(232, 80, 58, 0.3);
+            padding-bottom: 2px;
+            transition: border-color 0.2s;
+        }
+        .safety-cta a:hover { border-color: var(--coral); }
+
         /* Comparison */
         .vs-grid {
             display: grid;
@@ -626,6 +720,7 @@
             .feature-grid { grid-template-columns: 1fr; }
             .vs-grid { grid-template-columns: 1fr; }
             .install-grid { grid-template-columns: 1fr; gap: 40px; }
+            .safety-layout { grid-template-columns: 1fr; gap: 20px; }
         }
     </style>
 </head>
@@ -641,6 +736,7 @@
         </a>
         <div class="nav-links">
             <a href="#features">Features</a>
+            <a href="#safety">Safety</a>
             <a href="#models">Models</a>
             <a href="#install">Install</a>
             <a href="https://github.com/sam-pop/WhisperDictation" class="nav-gh" target="_blank" rel="noopener">
@@ -755,6 +851,45 @@
                 <h3>Obsessively tweakable</h3>
                 <p>Pick your hotkey. Pick your model. Pick your mic. Toggle every correction on or off. It's your app.</p>
             </div>
+        </div>
+    </div>
+</section>
+
+<!-- Safety -->
+<section class="safety-section" id="safety">
+    <div class="section-inner reveal">
+        <div class="section-tag">Safety</div>
+        <div class="section-title">Don't trust us. <em style="font-style: italic; color: var(--coral);">Verify it yourself.</em></div>
+        <div class="section-desc">Every privacy claim on this page is something you can check in under a minute.</div>
+
+        <div class="safety-layout">
+            <div class="dont-list-card">
+                <h3>What we don't do</h3>
+                <ul>
+                    <li><span class="x">&#x2717;</span> Send your audio anywhere</li>
+                    <li><span class="x">&#x2717;</span> Send your transcriptions anywhere</li>
+                    <li><span class="x">&#x2717;</span> Track, analyze, or log anything</li>
+                    <li><span class="x">&#x2717;</span> Phone home, ever</li>
+                    <li><span class="x">&#x2717;</span> Read your clipboard</li>
+                    <li><span class="x">&#x2717;</span> Load web fonts or external scripts</li>
+                    <li><span class="x">&#x2717;</span> Need an account</li>
+                    <li><span class="x">&#x2717;</span> Need an internet connection</li>
+                </ul>
+            </div>
+
+            <div class="verify-card">
+                <p class="lead">Every network call in the entire app, in one grep:</p>
+                <div class="cmd-line"><span class="prompt">$</span> grep -rE "URLSession|http" WhisperDictation/**/*.swift</div>
+                <div class="out">
+                    ModelManager.swift: "https://huggingface.co/..."<br>
+                    ModelManager.swift: URLSession.shared.download(from: model.url)
+                </div>
+                <div class="comment"># That's it. All of them. Only fires when you click Download Model.</div>
+            </div>
+        </div>
+
+        <div class="safety-cta">
+            <a href="privacy.html">Read the full privacy breakdown &rarr;</a>
         </div>
     </div>
 </section>
@@ -892,7 +1027,8 @@
         <div class="footer-links">
             <a href="https://github.com/sam-pop/WhisperDictation">GitHub</a>
             <a href="https://github.com/sam-pop/WhisperDictation/releases">Releases</a>
-            <a href="https://github.com/sam-pop/WhisperDictation/issues">Issues</a>
+            <a href="privacy.html">Privacy</a>
+            <a href="https://github.com/sam-pop/WhisperDictation/blob/main/SECURITY.md">Security</a>
             <a href="https://github.com/sam-pop/WhisperDictation/blob/main/LICENSE">MIT License</a>
         </div>
         <p class="footer-copy">
