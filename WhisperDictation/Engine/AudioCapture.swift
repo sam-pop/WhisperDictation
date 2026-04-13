@@ -77,18 +77,31 @@ final class AudioCapture {
         fputs("[AudioCapture] Recording started\n", stderr)
     }
 
-    func stopRecording() -> [Float] {
+    /// Stops capture and returns the captured buffer.
+    /// - Parameter trimTrailingSeconds: optional number of seconds to trim from the END of the
+    ///   buffer. Used by toggle hotkey mode to discard the silent hold-to-stop interval, which
+    ///   would otherwise be transcribed by Whisper as hallucinated punctuation/filler.
+    func stopRecording(trimTrailingSeconds: TimeInterval = 0) -> [Float] {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
 
         bufferLock.lock()
-        let buffer = audioBuffer
+        var buffer = audioBuffer
         audioBuffer.removeAll()
         bufferLock.unlock()
 
+        if trimTrailingSeconds > 0 {
+            let samplesToTrim = Int(trimTrailingSeconds * Self.sampleRate)
+            if buffer.count > samplesToTrim {
+                buffer.removeLast(samplesToTrim)
+            } else {
+                buffer.removeAll()
+            }
+        }
+
         let sec = Double(buffer.count) / Self.sampleRate
-        fputs("[AudioCapture] Stopped. \(buffer.count) samples (\(String(format: "%.1f", sec))s)\n", stderr)
+        fputs("[AudioCapture] Stopped. \(buffer.count) samples (\(String(format: "%.1f", sec))s, trimmed \(String(format: "%.1f", trimTrailingSeconds))s)\n", stderr)
         return buffer
     }
 

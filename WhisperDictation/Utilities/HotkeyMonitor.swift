@@ -82,6 +82,11 @@ final class HotkeyMonitor {
             if !CGEvent.tapIsEnabled(tap: tap) {
                 fputs("[HotkeyMonitor] Event tap was disabled by macOS! Re-enabling...\n", stderr)
                 CGEvent.tapEnable(tap: tap, enable: true)
+                // The tap was disabled — any in-flight key-down without its key-up
+                // would leave isKeyHeld stuck true, blocking the next press. Reset.
+                os_unfair_lock_lock(self.lock)
+                self.isKeyHeld = false
+                os_unfair_lock_unlock(self.lock)
             }
         }
         RunLoop.main.add(timer, forMode: .common)

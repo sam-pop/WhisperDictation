@@ -16,6 +16,10 @@ final class DictationEngine {
     private(set) var isModelLoaded: Bool = false
     private(set) var modelLoadError: String?
 
+    /// True while the user is holding the hotkey but the toggle-mode threshold hasn't yet fired.
+    /// Drives the menu bar hold indicator.
+    private(set) var isHoldingForToggle: Bool = false
+
     private var whisperBridge: WhisperBridge?
     private let audioCapture = AudioCapture()
     private let textInjector = TextInjector()
@@ -26,6 +30,10 @@ final class DictationEngine {
     private var recordingStartTime: Date?
 
     private var accessibilityPoller: Timer?
+
+    /// Pending toggle-mode hold timer. Cancelled if the user releases the key
+    /// before the threshold; cleared after firing.
+    private var holdWorkItem: DispatchWorkItem?
 
     init() {
         let axTrusted = AXIsProcessTrusted()
@@ -55,6 +63,7 @@ final class DictationEngine {
     }
 
     func restartHotkeyMonitor() {
+        cancelPendingToggle()
         hotkeyMonitor?.stop()
         setupHotkeyMonitor()
         hotkeyMonitor?.start()
@@ -102,8 +111,8 @@ final class DictationEngine {
 
     private func setupHotkeyMonitor() {
         hotkeyMonitor = HotkeyMonitor(
-            onKeyDown: { [weak self] in self?.startRecording() },
-            onKeyUp: { [weak self] in self?.stopRecordingAndTranscribe() }
+            onKeyDown: { [weak self] in self?.handleKeyDown() },
+            onKeyUp: { [weak self] in self?.handleKeyUp() }
         )
     }
 
@@ -112,7 +121,60 @@ final class DictationEngine {
     }
 
     func stopMonitoring() {
+        cancelPendingToggle()
         hotkeyMonitor?.stop()
+    }
+
+    // MARK: - Hotkey Mode Dispatch
+
+    private func handleKeyDown() {
+        switch AppSettings.shared.hotkeyMode {
+        case .pushToTalk:
+            startRecording()
+        case .toggle:
+            scheduleToggleAction()
+        }
+    }
+
+    private func handleKeyUp() {
+        switch AppSettings.shared.hotkeyMode {
+        case .pushToTalk:
+            stopRecordingAndTranscribe()
+        case .toggle:
+            cancelPendingToggle()
+        }
+    }
+
+    /// Toggle mode: schedule a deferred start/stop after `toggleHoldDuration` seconds.
+    /// If the user releases the key first, `cancelPendingToggle()` aborts the work item.
+    private func scheduleToggleAction() {
+        cancelPendingToggle()
+        isHoldingForToggle = true
+        let duration = AppSettings.shared.toggleHoldDuration
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.isHoldingForToggle = false
+            self.holdWorkItem = nil
+            // Defensive: settings may have changed mid-hold.
+            guard AppSettings.shared.hotkeyMode == .toggle else { return }
+            switch self.state {
+            case .idle:
+                self.startRecording()
+            case .recording:
+                self.stopRecordingAndTranscribe(triggeredByToggleHold: true)
+            case .processing, .typing:
+                // Silent no-op: app is busy, ignore the gesture.
+                break
+            }
+        }
+        holdWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    private func cancelPendingToggle() {
+        holdWorkItem?.cancel()
+        holdWorkItem = nil
+        if isHoldingForToggle { isHoldingForToggle = false }
     }
 
     // MARK: - Recording Flow
@@ -132,10 +194,13 @@ final class DictationEngine {
         }
     }
 
-    private func stopRecordingAndTranscribe() {
+    private func stopRecordingAndTranscribe(triggeredByToggleHold: Bool = false) {
         guard state == .recording else { return }
 
-        let audioBuffer = audioCapture.stopRecording()
+        // In toggle mode, trim the silent hold-to-stop interval so Whisper
+        // doesn't hallucinate trailing punctuation from the silence.
+        let trim = triggeredByToggleHold ? AppSettings.shared.toggleHoldDuration : 0
+        let audioBuffer = audioCapture.stopRecording(trimTrailingSeconds: trim)
         soundFeedback.playStopSound()
 
         // Check minimum duration
