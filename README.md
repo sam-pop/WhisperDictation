@@ -10,6 +10,7 @@
     <a href="#install-dmg">Download</a> &bull;
     <a href="#quick-start">Quick Start</a> &bull;
     <a href="#features">Features</a> &bull;
+    <a href="#privacy--safety">Privacy</a> &bull;
     <a href="#models">Models</a> &bull;
     <a href="#contributing">Contributing</a>
   </p>
@@ -47,6 +48,28 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 - **Sound feedback** -- subtle audio cues for recording start, stop, and completion
 - **Polished native UI** -- SwiftUI menu bar app with sidebar settings, dark/light mode support
 - **Open source** -- MIT licensed, no telemetry, no analytics
+
+## Privacy & Safety
+
+WhisperDictation runs **100% locally**. Your audio never leaves your Mac. There is no server, no account, no telemetry, no tracking of any kind.
+
+**Don't trust us — verify it yourself.** The entire app is ~2,500 lines of Swift. You can audit every network call in one command:
+
+```bash
+grep -rE "URLSession|http" WhisperDictation/**/*.swift
+# Only match: ModelManager.swift (fetches Whisper models from HuggingFace when you click Download)
+```
+
+### What we don't do
+
+- ❌ Send audio or transcriptions anywhere
+- ❌ Track, analyze, or log anything
+- ❌ Phone home, auto-update, or license-check
+- ❌ Read your clipboard
+- ❌ Load web fonts or external scripts
+- ❌ Require an account or an internet connection
+
+See the full [Privacy breakdown](https://sam-pop.github.io/WhisperDictation/privacy.html) and [SECURITY.md](SECURITY.md) for the threat model and disclosure policy.
 
 ## Install (DMG)
 

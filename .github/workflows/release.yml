@@ -27,8 +27,29 @@ jobs:
           chmod +x ./scripts/create-dmg.sh
           ./scripts/create-dmg.sh
 
+      - name: Generate SHA256 checksum
+        id: checksum
+        run: |
+          cd build
+          shasum -a 256 WhisperDictation.dmg > WhisperDictation.dmg.sha256
+          SHA=$(shasum -a 256 WhisperDictation.dmg | awk '{print $1}')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          cat WhisperDictation.dmg.sha256
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          SHA256: ${{ steps.checksum.outputs.sha }}
         with:
-          files: build/WhisperDictation.dmg
+          files: |
+            build/WhisperDictation.dmg
+            build/WhisperDictation.dmg.sha256
           generate_release_notes: true
+          append_body: true
+          body: |
+
+            ### Verify download integrity
+            ```
+            shasum -a 256 WhisperDictation.dmg
+            ```
+            Expected SHA256: see `WhisperDictation.dmg.sha256` attached to this release.

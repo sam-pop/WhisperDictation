@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy &amp; Safety — WhisperDictation</title>
+    <meta name="description" content="How WhisperDictation handles your data (spoiler: it doesn't). Audit the code yourself.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,600&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cream: #faf7f2;
+            --cream-dark: #f0ece4;
+            --ink: #1a1a2e;
+            --ink-light: #3d3d56;
+            --muted: #8b8680;
+            --coral: #e8503a;
+            --coral-light: #fef0ee;
+            --coral-glow: rgba(232, 80, 58, 0.12);
+            --green: #16a34a;
+            --green-bg: #f0fdf4;
+            --red: #dc2626;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Outfit', -apple-system, sans-serif;
+            background: var(--cream);
+            color: var(--ink);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.025;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            background: rgba(250, 247, 242, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(26, 26, 46, 0.06);
+        }
+        .nav-inner {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 28px;
+            height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .nav-brand {
+            font-family: 'Fraunces', serif;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--ink);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .nav-back {
+            font-size: 14px;
+            color: var(--muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .nav-back:hover { color: var(--ink); }
+
+        .content {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 130px 28px 100px;
+        }
+        .eyebrow {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--coral);
+            margin-bottom: 16px;
+        }
+        h1 {
+            font-family: 'Fraunces', serif;
+            font-size: clamp(40px, 6vw, 56px);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.08;
+            margin-bottom: 20px;
+        }
+        h1 em {
+            font-style: italic;
+            color: var(--coral);
+        }
+        .lede {
+            font-size: 18px;
+            color: var(--ink-light);
+            line-height: 1.7;
+            margin-bottom: 60px;
+            max-width: 560px;
+        }
+
+        h2 {
+            font-family: 'Fraunces', serif;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-top: 56px;
+            margin-bottom: 16px;
+        }
+        h2 .hash {
+            color: var(--coral);
+            opacity: 0.4;
+            font-weight: 400;
+            margin-right: 4px;
+        }
+        p {
+            margin-bottom: 18px;
+            color: var(--ink-light);
+        }
+        p strong { color: var(--ink); }
+        a {
+            color: var(--coral);
+            text-decoration: underline;
+            text-decoration-color: rgba(232, 80, 58, 0.3);
+            text-underline-offset: 3px;
+            transition: text-decoration-color 0.2s;
+        }
+        a:hover { text-decoration-color: var(--coral); }
+
+        .dont-list {
+            background: var(--cream-dark);
+            border-radius: 14px;
+            padding: 28px 32px;
+            margin: 32px 0;
+            list-style: none;
+        }
+        .dont-list li {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+            padding: 8px 0;
+            font-size: 16px;
+            color: var(--ink);
+        }
+        .dont-list .x {
+            color: var(--red);
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            flex-shrink: 0;
+            width: 18px;
+        }
+        .dont-list li span.note {
+            color: var(--muted);
+            font-size: 14px;
+            margin-left: 6px;
+        }
+
+        .verify {
+            background: var(--ink);
+            color: var(--cream);
+            border-radius: 16px;
+            padding: 28px 32px;
+            margin: 32px 0;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .verify .prompt {
+            color: var(--coral);
+            margin-right: 8px;
+        }
+        .verify .cmd {
+            color: var(--cream);
+            font-size: 13px;
+            line-height: 1.8;
+            word-break: break-all;
+        }
+        .verify .out {
+            color: rgba(250, 247, 242, 0.5);
+            font-size: 12px;
+            line-height: 1.8;
+            margin-top: 12px;
+        }
+        .verify .comment {
+            color: #16a34a;
+            font-size: 12px;
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        .receipt {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 32px 0;
+        }
+        .receipt-card {
+            background: var(--cream-dark);
+            border-radius: 12px;
+            padding: 20px 22px;
+        }
+        .receipt-card.yes {
+            background: var(--green-bg);
+            border: 1px solid rgba(22, 163, 74, 0.15);
+        }
+        .receipt-card.no {
+            background: var(--coral-light);
+            border: 1px solid rgba(232, 80, 58, 0.15);
+        }
+        .receipt-card h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 12px;
+        }
+        .receipt-card.yes h3 { color: var(--green); }
+        .receipt-card.no h3 { color: var(--coral); }
+        .receipt-card ul {
+            list-style: none;
+            padding: 0;
+        }
+        .receipt-card li {
+            padding: 4px 0;
+            font-size: 14px;
+            color: var(--ink);
+        }
+
+        .kbd {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            background: var(--cream-dark);
+            padding: 2px 8px;
+            border-radius: 5px;
+            border: 1px solid rgba(26,26,46,0.08);
+            color: var(--ink);
+        }
+
+        .footer-link {
+            margin-top: 80px;
+            padding-top: 40px;
+            border-top: 1px solid rgba(26,26,46,0.08);
+            text-align: center;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        @media (max-width: 640px) {
+            .receipt { grid-template-columns: 1fr; }
+            .content { padding: 110px 20px 60px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <a href="./" class="nav-brand">WhisperDictation</a>
+        <a href="./" class="nav-back">&larr; Back</a>
+    </div>
+</nav>
+
+<article class="content">
+    <div class="eyebrow">Privacy &amp; Safety</div>
+    <h1>Don't trust us.<br><em>Verify it yourself.</em></h1>
+    <p class="lede">
+        Most privacy pages are vibes. This one is <strong>grep commands</strong>.
+        Every claim below is something you can check in less than sixty seconds.
+    </p>
+
+    <h2><span class="hash">#</span>The short version</h2>
+    <p>
+        WhisperDictation runs entirely on your Mac. Your audio never leaves your machine.
+        There is no server. There is no telemetry. There is no account.
+        When we say "100% local," we mean it literally &mdash; and the source code is
+        right there for you to confirm.
+    </p>
+
+    <h2><span class="hash">#</span>What we don't do</h2>
+    <ul class="dont-list">
+        <li><span class="x">&#x2717;</span> Send your audio anywhere <span class="note">— it's processed locally and discarded</span></li>
+        <li><span class="x">&#x2717;</span> Send your transcriptions anywhere <span class="note">— they go straight to your cursor</span></li>
+        <li><span class="x">&#x2717;</span> Track you <span class="note">— no analytics, no telemetry, no crash reports</span></li>
+        <li><span class="x">&#x2717;</span> Phone home <span class="note">— no update server, no license check, no pings</span></li>
+        <li><span class="x">&#x2717;</span> Read the clipboard <span class="note">— we type at the cursor, we don't touch paste</span></li>
+        <li><span class="x">&#x2717;</span> Load web fonts <span class="note">— the app is 100% native, no browser involved</span></li>
+        <li><span class="x">&#x2717;</span> Use any external service <span class="note">— except HuggingFace, when you click Download Model</span></li>
+    </ul>
+
+    <h2><span class="hash">#</span>Don't take our word for it</h2>
+    <p>
+        The entire app is ~2,500 lines of Swift. You can audit every network-facing
+        line of code in a single <code class="kbd">grep</code>. Try this:
+    </p>
+    <div class="verify">
+        <div class="cmd"><span class="prompt">$</span> git clone https://github.com/sam-pop/WhisperDictation.git &amp;&amp; cd WhisperDictation</div>
+        <div class="cmd" style="margin-top: 8px;"><span class="prompt">$</span> grep -rE "URLSession|URLRequest|http" WhisperDictation/*.swift WhisperDictation/**/*.swift</div>
+        <div class="out">
+            WhisperDictation/Engine/ModelManager.swift: "https://huggingface.co/ggerganov/whisper.cpp/..."<br>
+            WhisperDictation/Engine/ModelManager.swift: URLSession.shared.download(from: model.url, ...)
+        </div>
+        <div class="comment"># That's it. Every network call. All of them. Only fires when you click Download.</div>
+    </div>
+    <p>
+        <a href="https://github.com/sam-pop/WhisperDictation/blob/main/WhisperDictation/Engine/ModelManager.swift">Read ModelManager.swift &rarr;</a>
+        and see for yourself. Models come from HuggingFace because that's where the Whisper
+        model files live &mdash; downloaded once, stored locally, never touched again.
+    </p>
+
+    <h2><span class="hash">#</span>Permission receipt</h2>
+    <p>Here's exactly what the app does with the permissions it asks for:</p>
+    <div class="receipt">
+        <div class="receipt-card yes">
+            <h3>Microphone</h3>
+            <ul>
+                <li>Captures audio <strong>only while you hold the hotkey</strong></li>
+                <li>Buffer stays in RAM</li>
+                <li>Converted to 16kHz mono, fed to Whisper</li>
+                <li>Discarded after transcription</li>
+                <li>Never written to disk</li>
+            </ul>
+        </div>
+        <div class="receipt-card yes">
+            <h3>Accessibility</h3>
+            <ul>
+                <li>Listens for your hotkey (CGEvent tap)</li>
+                <li>Types transcribed text at cursor</li>
+                <li>Does not read screen contents</li>
+                <li>Does not read other keystrokes</li>
+                <li>Does not record what you type</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2><span class="hash">#</span>Build it yourself</h2>
+    <p>
+        Paranoid? We respect that. You never have to trust the DMG on our releases page.
+        Clone the repo, run <code class="kbd">make whisper &amp;&amp; make app</code>,
+        and you'll have a binary built from source you can read line by line.
+    </p>
+    <p>
+        Want to be really sure? Run <a href="https://www.obdev.at/products/littlesnitch/">Little Snitch</a>
+        or <a href="https://objective-see.org/products/lulu.html">LuLu</a> while you dictate.
+        You'll see zero outbound connections. (Except when you click the Download Model button.
+        Then you'll see one. To HuggingFace. We told you.)
+    </p>
+
+    <h2><span class="hash">#</span>Reporting security issues</h2>
+    <p>
+        Found something concerning? Open an issue on <a href="https://github.com/sam-pop/WhisperDictation/issues">GitHub</a>
+        or see our <a href="https://github.com/sam-pop/WhisperDictation/blob/main/SECURITY.md">SECURITY.md</a>
+        for responsible disclosure.
+    </p>
+
+    <div class="footer-link">
+        <a href="./">&larr; Back to the home page</a>
+    </div>
+</article>
+
+</body>
+</html>
