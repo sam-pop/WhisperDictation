@@ -1,9 +1,12 @@
 SDK := $(shell xcrun --sdk macosx --show-sdk-path)
-ARCH := $(shell uname -m)
 MIN_MACOS := 14.0
-TARGET := $(ARCH)-apple-macos$(MIN_MACOS)
 BUILD_DIR := build
 APP_BUNDLE := $(BUILD_DIR)/WhisperDictation.app
+
+# Build universal binary (arm64 + x86_64). The Swift binary is built once per
+# architecture and then merged with `lipo`. whisper.cpp's static libs are also
+# built fat (see scripts/build-whisper.sh: CMAKE_OSX_ARCHITECTURES). This is
+# what we ship — Apple Silicon and Intel users both need to be able to run it.
 
 SWIFT_FILES := \
 	WhisperDictation/Utilities/Settings.swift \
@@ -38,17 +41,29 @@ lib/libwhisper.a:
 model:
 	./scripts/download-model.sh small.en
 
-$(BUILD_DIR)/WhisperDictation: $(SWIFT_FILES) lib/libwhisper.a
+define BUILD_SLICE
+xcrun swiftc \
+	-sdk "$(SDK)" \
+	-target $(1)-apple-macos$(MIN_MACOS) \
+	-import-objc-header WhisperDictation/WhisperDictation-Bridging-Header.h \
+	-I lib -L lib \
+	$(LIBS) $(FRAMEWORKS) \
+	-parse-as-library \
+	$(SWIFT_FILES) \
+	-o $(BUILD_DIR)/WhisperDictation-$(1)
+endef
+
+$(BUILD_DIR)/WhisperDictation-arm64: $(SWIFT_FILES) lib/libwhisper.a
 	@mkdir -p $(BUILD_DIR)
-	xcrun swiftc \
-		-sdk "$(SDK)" \
-		-target $(TARGET) \
-		-import-objc-header WhisperDictation/WhisperDictation-Bridging-Header.h \
-		-I lib -L lib \
-		$(LIBS) $(FRAMEWORKS) \
-		-parse-as-library \
-		$(SWIFT_FILES) \
-		-o $@
+	$(call BUILD_SLICE,arm64)
+
+$(BUILD_DIR)/WhisperDictation-x86_64: $(SWIFT_FILES) lib/libwhisper.a
+	@mkdir -p $(BUILD_DIR)
+	$(call BUILD_SLICE,x86_64)
+
+$(BUILD_DIR)/WhisperDictation: $(BUILD_DIR)/WhisperDictation-arm64 $(BUILD_DIR)/WhisperDictation-x86_64
+	lipo -create $^ -output $@
+	@lipo -info $@
 
 app: $(BUILD_DIR)/WhisperDictation
 	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
