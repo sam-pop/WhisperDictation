@@ -24,6 +24,7 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         case selectedAudioDeviceUID
         case numberConversionEnabled
         case customTerms
+        case hasCompletedOnboarding
     }
 
     // MARK: - Properties
@@ -89,6 +90,14 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     var launchAtLogin: Bool {
         get { defaults.bool(forKey: Key.launchAtLogin.rawValue) }
         set { defaults.set(newValue, forKey: Key.launchAtLogin.rawValue); objectWillChange.send() }
+    }
+
+    /// Whether the user has seen (or been auto-skipped past) first-launch onboarding.
+    /// Defaults to false so a fresh install shows the flow once; existing users who
+    /// already have a model on disk are marked complete at launch without ever seeing it.
+    var hasCompletedOnboarding: Bool {
+        get { defaults.bool(forKey: Key.hasCompletedOnboarding.rawValue) }
+        set { defaults.set(newValue, forKey: Key.hasCompletedOnboarding.rawValue); objectWillChange.send() }
     }
 
     var minimumRecordingDuration: Double {

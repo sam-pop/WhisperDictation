@@ -675,6 +675,42 @@ final class AudioCaptureDurationCapTests: XCTestCase {
     }
 }
 
+// MARK: - Onboarding Tests
+
+final class OnboardingTests: XCTestCase {
+    func testHasCompletedOnboardingRoundTrips() {
+        let settings = AppSettings.shared
+        let original = settings.hasCompletedOnboarding
+
+        settings.hasCompletedOnboarding = true
+        XCTAssertTrue(settings.hasCompletedOnboarding)
+
+        settings.hasCompletedOnboarding = false
+        XCTAssertFalse(settings.hasCompletedOnboarding)
+
+        settings.hasCompletedOnboarding = original
+    }
+
+    // The decision is pure: show onboarding only for a genuinely new user —
+    // not completed AND no whisper model on disk yet.
+    func testShowsForBrandNewUser() {
+        XCTAssertTrue(OnboardingView.shouldShowOnboarding(hasCompleted: false, hasAnyModel: false))
+    }
+
+    func testSkipsWhenAlreadyCompleted() {
+        XCTAssertFalse(OnboardingView.shouldShowOnboarding(hasCompleted: true, hasAnyModel: false))
+    }
+
+    // Existing users (upgrading) already have a model — they must never see onboarding.
+    func testSkipsExistingUserWithModel() {
+        XCTAssertFalse(OnboardingView.shouldShowOnboarding(hasCompleted: false, hasAnyModel: true))
+    }
+
+    func testSkipsCompletedUserWithModel() {
+        XCTAssertFalse(OnboardingView.shouldShowOnboarding(hasCompleted: true, hasAnyModel: true))
+    }
+}
+
 // MARK: - AudioDeviceManager Tests
 
 final class AudioDeviceManagerTests: XCTestCase {
