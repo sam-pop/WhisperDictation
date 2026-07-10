@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 final class ModelManager: ObservableObject, @unchecked Sendable {
-    static nonisolated(unsafe) let shared = ModelManager()
+    static let shared = ModelManager()
 
     /// Progress (0...1) of in-flight downloads, keyed by model `fileName`. A model
     /// is present here only while it is actively downloading, so each Settings row
@@ -30,6 +30,16 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
         let sha256: String
 
         var id: String { fileName }
+
+        /// The id persisted in `AppSettings.selectedModel`: the `fileName` with the
+        /// "ggml-" prefix and ".bin" suffix stripped (e.g. "ggml-small.en-q5_1.bin" →
+        /// "small.en-q5_1"). Single source for the derivation that was hand-inlined in
+        /// SettingsView, OnboardingView, and AppSettings.
+        var settingsId: String {
+            fileName
+                .replacingOccurrences(of: "ggml-", with: "")
+                .replacingOccurrences(of: ".bin", with: "")
+        }
 
         // Full precision models
         static let baseEn = ModelInfo(
@@ -100,7 +110,7 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
     func activeModelPath() -> String? {
         let selectedModel = AppSettings.shared.selectedModel
         // Try exact match first, then contains
-        let info = ModelInfo.all.first { $0.fileName == "ggml-\(selectedModel).bin" }
+        let info = ModelInfo.all.first { $0.settingsId == selectedModel }
             ?? ModelInfo.all.first { $0.fileName.contains(selectedModel) }
             ?? ModelInfo.smallEnQ5
         let path = modelsDirectory.appendingPathComponent(info.fileName).path

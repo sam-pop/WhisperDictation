@@ -1,7 +1,7 @@
 import Foundation
 
 final class TextCorrector: @unchecked Sendable {
-    static nonisolated(unsafe) let shared = TextCorrector()
+    static let shared = TextCorrector()
 
     // MARK: - Custom Terms Cache
 
@@ -323,17 +323,9 @@ final class TextCorrector: @unchecked Sendable {
         let lookup: [String: String]
     }
 
-    /// Compiled term matcher for word-boundary-aware dev-term casing.
-    /// - The lookup is keyed by the lowercased match; `upperTerms` are seeded first
-    ///   and `mixedCaseTerms` second, so a later definition wins — matching the old
-    ///   sequential "last pattern applied wins" behavior (and de-duping repeats).
-    /// - Alternatives are sorted longest-first so a specific term is never shadowed
-    ///   by a shorter prefix in the alternation (e.g. "postgresql" before "postgres",
-    ///   "ci/cd" before "ci"/"cd", "javascript" before "java"). Word boundaries plus
-    ///   this ordering preserve the original per-pattern semantics exactly.
-    private static let compiledTerms: CompiledTerms = {
-        // Terms where the match is case-insensitive and replacement is the correct form
-        let upperTerms = [
+    /// Terms whose correct casing is simply their upper-cased form (pure acronyms).
+    /// Keyed and matched case-insensitively on the lowercase spelling.
+    static let upperTerms: [String] = [
             // Pure acronyms (all caps)
             "api", "sdk", "cli", "ide", "orm", "cdn", "dns", "ssl", "tls", "ssh",
             "html", "css", "xml", "sql", "jwt", "csv", "pdf", "svg", "png", "jpg",
@@ -349,7 +341,12 @@ final class TextCorrector: @unchecked Sendable {
             "npm", "npx",
         ]
 
-        let mixedCaseTerms: [(String, String)] = [
+    /// Brand / proper-noun terms mapped from lowercase spelling to canonical display
+    /// casing. Includes alias spellings (e.g. "postgres"→"PostgreSQL", "cicd"→"CI/CD",
+    /// "csharp"→"C#") that have no display-form preimage — which is why this map is the
+    /// single source of truth for casing and cannot be regenerated from a flat list of
+    /// display names.
+    static let mixedCaseTerms: [(String, String)] = [
             // Proper nouns / brand names
             ("javascript", "JavaScript"), ("typescript", "TypeScript"),
             ("python", "Python"), ("golang", "Golang"),
@@ -412,6 +409,28 @@ final class TextCorrector: @unchecked Sendable {
             ("websocket", "WebSocket"),
         ]
 
+    /// The canonical display casings TextCorrector normalizes brand terms to
+    /// (mixed-case terms only; acronyms are just upper-cased). Exposed as the single
+    /// authority for "the correct casing of X" so the vocabulary-prompt drift test can
+    /// verify the default prompt agrees. Order-preserving, de-duplicated.
+    static let canonicalDisplayTerms: [String] = {
+        var seen = Set<String>()
+        var out: [String] = []
+        for (_, display) in mixedCaseTerms where seen.insert(display).inserted {
+            out.append(display)
+        }
+        return out
+    }()
+
+    /// Compiled term matcher for word-boundary-aware dev-term casing.
+    /// - The lookup is keyed by the lowercased match; `upperTerms` are seeded first
+    ///   and `mixedCaseTerms` second, so a later definition wins — matching the old
+    ///   sequential "last pattern applied wins" behavior (and de-duping repeats).
+    /// - Alternatives are sorted longest-first so a specific term is never shadowed
+    ///   by a shorter prefix in the alternation (e.g. "postgresql" before "postgres",
+    ///   "ci/cd" before "ci"/"cd", "javascript" before "java"). Word boundaries plus
+    ///   this ordering preserve the original per-pattern semantics exactly.
+    private static let compiledTerms: CompiledTerms = {
         var lookup: [String: String] = [:]
         for term in upperTerms { lookup[term] = term.uppercased() }
         for (match, replacement) in mixedCaseTerms { lookup[match] = replacement }

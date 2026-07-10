@@ -15,8 +15,7 @@ final class HotkeyMonitor {
     }
 
     private var isModifierKey: Bool {
-        let code = Int(monitoredKeyCode)
-        return [54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code)
+        KeyCodeNames.isModifier(Int(monitoredKeyCode))
     }
 
     private var isKeyHeld = false

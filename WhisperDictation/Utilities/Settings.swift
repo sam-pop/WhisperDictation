@@ -1,7 +1,7 @@
 import Foundation
 
 final class AppSettings: ObservableObject, @unchecked Sendable {
-    static nonisolated(unsafe) let shared = AppSettings()
+    static let shared = AppSettings()
 
     private let defaults = UserDefaults.standard
 
@@ -62,14 +62,9 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         get {
             let stored = defaults.string(forKey: Key.selectedModel.rawValue) ?? "small.en"
             // Fall back to the default if the stored id doesn't correspond to any
-            // catalog model (same fileName-derivation as SettingsView.isModelSelected:
-            // strip the "ggml-" prefix and ".bin" suffix). Guards against a stale id
-            // left behind after the catalog changes.
-            let isKnown = ModelManager.ModelInfo.all.contains { model in
-                model.fileName
-                    .replacingOccurrences(of: "ggml-", with: "")
-                    .replacingOccurrences(of: ".bin", with: "") == stored
-            }
+            // catalog model (see ModelInfo.settingsId). Guards against a stale id left
+            // behind after the catalog changes.
+            let isKnown = ModelManager.ModelInfo.all.contains { $0.settingsId == stored }
             return isKnown ? stored : "small.en"
         }
         set { defaults.set(newValue, forKey: Key.selectedModel.rawValue); objectWillChange.send() }

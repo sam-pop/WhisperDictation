@@ -46,7 +46,7 @@ struct MenuBarView: View {
             .padding(.vertical, 6)
 
             // Version
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+            Text("v\(Bundle.main.appVersion)")
                 .font(.system(size: 10))
                 .foregroundStyle(.quaternary)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -215,18 +215,7 @@ struct MenuBarView: View {
     }
 
     private var hotkeyLabel: String {
-        switch settings.hotkeyKeyCode {
-        case 61: "R⌥"
-        case 58: "L⌥"
-        case 59: "L⌃"
-        case 62: "R⌃"
-        case 63: "Fn"
-        case 56: "L⇧"
-        case 60: "R⇧"
-        case 55: "L⌘"
-        case 54: "R⌘"
-        default: "key"
-        }
+        KeyCodeNames.shortLabel(for: settings.hotkeyKeyCode)
     }
 }
 

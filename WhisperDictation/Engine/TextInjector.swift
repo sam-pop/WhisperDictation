@@ -19,35 +19,56 @@ final class TextInjector: @unchecked Sendable {
     /// Call `flush()` to wait for all enqueued typing to finish.
     func type(text: String) {
         typingQueue.async { [source] in
-            let utf16 = Array(text.utf16)
-            let chunkSize = 16
-            var offset = 0
+            let chunks = Self.chunks(of: Array(text.utf16))
 
-            while offset < utf16.count {
-                let end = min(offset + chunkSize, utf16.count)
-                let chunk = Array(utf16[offset..<end])
-
+            for (i, chunk) in chunks.enumerated() {
                 guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
                       let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
-                    offset = end
                     continue
                 }
 
                 chunk.withUnsafeBufferPointer { ptr in
-                    keyDown.keyboardSetUnicodeString(stringLength: Int(chunk.count), unicodeString: ptr.baseAddress)
-                    keyUp.keyboardSetUnicodeString(stringLength: Int(chunk.count), unicodeString: ptr.baseAddress)
+                    keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: ptr.baseAddress)
+                    keyUp.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: ptr.baseAddress)
                 }
 
                 keyDown.post(tap: .cghidEventTap)
                 keyUp.post(tap: .cghidEventTap)
 
-                offset = end
-
-                if offset < utf16.count {
+                if i < chunks.count - 1 {
                     Thread.sleep(forTimeInterval: 0.005)
                 }
             }
         }
+    }
+
+    /// Split a UTF-16 buffer into chunks of at most `maxChunk` code units for
+    /// `keyboardSetUnicodeString`, **never splitting a surrogate pair across a chunk
+    /// boundary**. A split pair would post a lone high surrogate followed by a lone low
+    /// surrogate, which macOS renders as replacement characters instead of the intended
+    /// emoji/astral glyph. Pure and static so the boundary math is unit-testable
+    /// without CGEvent.
+    static func chunks(of utf16: [UInt16], maxChunk: Int = 16) -> [[UInt16]] {
+        guard maxChunk > 0 else { return utf16.isEmpty ? [] : [utf16] }
+        var result: [[UInt16]] = []
+        var offset = 0
+        while offset < utf16.count {
+            var end = min(offset + maxChunk, utf16.count)
+            // If the last unit of this chunk is a high surrogate and a unit follows it
+            // (its low surrogate), the pair straddles the boundary — back off by one so
+            // the whole pair lands in the next chunk. The `end - 1 > offset` guard keeps
+            // the chunk non-empty so progress is guaranteed even for pathological input.
+            if end < utf16.count, Self.isHighSurrogate(utf16[end - 1]), end - 1 > offset {
+                end -= 1
+            }
+            result.append(Array(utf16[offset..<end]))
+            offset = end
+        }
+        return result
+    }
+
+    private static func isHighSurrogate(_ unit: UInt16) -> Bool {
+        (0xD800...0xDBFF).contains(unit)
     }
 
     /// Barrier that blocks the caller until all previously-enqueued typing has
