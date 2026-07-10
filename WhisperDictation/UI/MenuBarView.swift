@@ -4,6 +4,7 @@ struct MenuBarView: View {
     let engine: DictationEngine
     @ObservedObject private var permissions = PermissionManager.shared
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var modelManager = ModelManager.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -15,7 +16,7 @@ struct MenuBarView: View {
                 .padding(.bottom, 10)
 
             // Alerts (permissions / errors)
-            if !permissions.allPermissionsGranted || engine.modelLoadError != nil {
+            if !permissions.allPermissionsGranted || engine.modelLoadError != nil || engine.transcriptionError != nil || modelManager.downloadError != nil {
                 alertsSection
                     .padding(.horizontal, 16)
                     .padding(.bottom, 10)
@@ -122,6 +123,20 @@ struct MenuBarView: View {
             }
             if let error = engine.modelLoadError {
                 AlertRow(icon: "exclamationmark.triangle.fill", text: error, color: .red) {
+                    openWindow(id: "settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            if let error = engine.transcriptionError {
+                AlertRow(icon: "waveform.badge.exclamationmark", text: error, color: .orange) {
+                    openWindow(id: "settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            // Download failures must surface even when Settings (Model tab) isn't open.
+            // Cleared automatically when the user retries (startDownload resets it).
+            if let error = modelManager.downloadError {
+                AlertRow(icon: "exclamationmark.arrow.triangle.2.circlepath", text: error, color: .orange) {
                     openWindow(id: "settings")
                     NSApp.activate(ignoringOtherApps: true)
                 }
