@@ -10,6 +10,8 @@ APP_BUNDLE := $(BUILD_DIR)/WhisperDictation.app
 
 SWIFT_FILES := \
 	WhisperDictation/Utilities/Settings.swift \
+	WhisperDictation/Utilities/KeyCodeNames.swift \
+	WhisperDictation/Utilities/AppInfo.swift \
 	WhisperDictation/Engine/WhisperBridge.swift \
 	WhisperDictation/Engine/AudioCapture.swift \
 	WhisperDictation/Engine/TextInjector.swift \

@@ -274,10 +274,7 @@ struct OnboardingView: View {
     }
 
     private func activateRecommendedModel() {
-        let name = recommendedModel.fileName
-            .replacingOccurrences(of: "ggml-", with: "")
-            .replacingOccurrences(of: ".bin", with: "")
-        AppSettings.shared.selectedModel = name
+        AppSettings.shared.selectedModel = recommendedModel.settingsId
         engine.reloadModel()
     }
 

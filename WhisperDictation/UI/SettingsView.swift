@@ -72,7 +72,7 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                Text("v\(Bundle.main.appVersion)")
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
             }
@@ -356,12 +356,12 @@ private struct HotkeyRecorder: View {
 
             // Quick pick pills
             HStack(spacing: 6) {
-                ForEach(presetKeys, id: \.code) { preset in
+                ForEach(KeyCodeNames.presets, id: \.code) { preset in
                     Button {
                         keyCode = preset.code
                         stopRecording()
                     } label: {
-                        Text(preset.name)
+                        Text(preset.pill)
                             .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
@@ -397,7 +397,7 @@ private struct HotkeyRecorder: View {
         }
         let flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { event in
             let code = Int(event.keyCode)
-            if [54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code) {
+            if KeyCodeNames.isModifier(code) {
                 keyCode = code
                 stopRecording()
             }
@@ -413,30 +413,8 @@ private struct HotkeyRecorder: View {
         eventMonitors.removeAll()
     }
 
-    private var presetKeys: [(name: String, code: Int)] {
-        [("Right ⌥", 61), ("Left ⌥", 58), ("Right ⌃", 62), ("Left ⌃", 59), ("Fn", 63)]
-    }
-
     private func keyName(for code: Int) -> String {
-        switch code {
-        case 61: return "⌥  Right Option"
-        case 58: return "⌥  Left Option"
-        case 59: return "⌃  Left Control"
-        case 62: return "⌃  Right Control"
-        case 63: return "Fn"
-        case 56: return "⇧  Left Shift"
-        case 60: return "⇧  Right Shift"
-        case 55: return "⌘  Left Command"
-        case 54: return "⌘  Right Command"
-        case 57: return "⇪  Caps Lock"
-        case 36: return "↩  Return"
-        case 49: return "␣  Space"
-        case 53: return "⎋  Escape"
-        case 48: return "⇥  Tab"
-        default:
-            if let name = keyCodeToString(code) { return name }
-            return "Key \(code)"
-        }
+        KeyCodeNames.descriptiveLabel(for: code, layoutFallback: keyCodeToString)
     }
 
     private func keyCodeToString(_ code: Int) -> String? {
@@ -588,10 +566,7 @@ private struct ModelSection: View {
                 if isDownloaded {
                     if !isSelected {
                         Button("Activate") {
-                            let name = model.fileName
-                                .replacingOccurrences(of: "ggml-", with: "")
-                                .replacingOccurrences(of: ".bin", with: "")
-                            settings.selectedModel = name
+                            settings.selectedModel = model.settingsId
                             engine.reloadModel()
                         }
                         .buttonStyle(.borderedProminent)
@@ -634,10 +609,7 @@ private struct ModelSection: View {
     }
 
     private func isModelSelected(_ model: ModelManager.ModelInfo) -> Bool {
-        let modelKey = model.fileName
-            .replacingOccurrences(of: "ggml-", with: "")
-            .replacingOccurrences(of: ".bin", with: "")
-        return settings.selectedModel == modelKey
+        settings.selectedModel == model.settingsId
     }
 
     private func tierGradient(for model: ModelManager.ModelInfo) -> LinearGradient {
@@ -653,14 +625,6 @@ private struct ModelSection: View {
         case let f where f.contains("base"): return "⚡"
         case let f where f.contains("small"): return "🎯"
         default: return "🧠"
-        }
-    }
-
-    private func tierSpeed(for model: ModelManager.ModelInfo) -> String {
-        switch model.fileName {
-        case let f where f.contains("base"): return "Fastest"
-        case let f where f.contains("small"): return "Balanced"
-        default: return "Most accurate"
         }
     }
 }
