@@ -543,6 +543,41 @@ final class TextCorrectorTests: XCTestCase {
 // MARK: - DictationEngine Tests
 
 final class DictationEngineTests: XCTestCase {
+
+    // MARK: - Hotkey dispatch semantics (Phase 3)
+
+    /// Push-to-talk: a key-down is always deliberate — while transcribing it cancels,
+    /// otherwise it starts recording.
+    func testPushToTalkKeyDownCancelsOnlyWhileTranscribing() {
+        XCTAssertEqual(DictationEngine.keyDownAction(mode: .pushToTalk, state: .idle), .startRecording)
+        XCTAssertEqual(DictationEngine.keyDownAction(mode: .pushToTalk, state: .recording), .startRecording)
+        XCTAssertEqual(DictationEngine.keyDownAction(mode: .pushToTalk, state: .processing), .cancelTranscription)
+        XCTAssertEqual(DictationEngine.keyDownAction(mode: .pushToTalk, state: .typing), .cancelTranscription)
+    }
+
+    /// Toggle mode: a bare key-down must NEVER cancel directly — a stray tap during
+    /// .processing would destroy an in-flight transcription (e.g. right after the
+    /// 5-minute cap auto-stopped a long recording). Everything goes through the
+    /// deliberate hold.
+    func testToggleKeyDownNeverCancelsDirectly() {
+        for state in [DictationState.idle, .recording, .processing, .typing] {
+            XCTAssertEqual(
+                DictationEngine.keyDownAction(mode: .toggle, state: state),
+                .scheduleToggle,
+                "toggle key-down in \(state) must only schedule the hold"
+            )
+        }
+    }
+
+    /// A COMPLETED toggle hold is as deliberate as any other toggle action:
+    /// idle starts, recording stops, transcribing cancels.
+    func testToggleHoldActionPerState() {
+        XCTAssertEqual(DictationEngine.toggleHoldAction(state: .idle), .startRecording)
+        XCTAssertEqual(DictationEngine.toggleHoldAction(state: .recording), .stopAndTranscribe)
+        XCTAssertEqual(DictationEngine.toggleHoldAction(state: .processing), .cancelTranscription)
+        XCTAssertEqual(DictationEngine.toggleHoldAction(state: .typing), .cancelTranscription)
+    }
+
     func testInitialState() {
         let engine = DictationEngine()
         XCTAssertEqual(engine.state, .idle)
@@ -599,6 +634,44 @@ final class WhisperBridgeTests: XCTestCase {
         let error = WhisperError.transcriptionFailed(code: -7)
         XCTAssertNotNil(error.errorDescription)
         XCTAssertTrue(error.errorDescription?.contains("-7") ?? false)
+    }
+
+    // MARK: - Cancellation (Phase 3)
+
+    func testCancelledIsCancellationButFailureIsNot() {
+        XCTAssertTrue(WhisperError.cancelled.isCancellation)
+        XCTAssertFalse(WhisperError.transcriptionFailed(code: -1).isCancellation)
+        XCTAssertFalse(WhisperError.modelLoadFailed("/x").isCancellation)
+    }
+
+    func testCancellationFlagStartsFalseThenCancels() {
+        let flag = CancellationFlag()
+        XCTAssertFalse(flag.isCancelled)
+        flag.cancel()
+        XCTAssertTrue(flag.isCancelled)
+        flag.cancel() // idempotent
+        XCTAssertTrue(flag.isCancelled)
+    }
+}
+
+// MARK: - AudioCapture Tests
+
+final class AudioCaptureDurationCapTests: XCTestCase {
+    func testMaxRecordingSamplesIsFiveMinutesAt16kHz() {
+        XCTAssertEqual(AudioCapture.maxRecordingSeconds, 300)
+        XCTAssertEqual(AudioCapture.maxRecordingSamples, 16000 * 300)
+    }
+
+    func testCrossesDurationCapFiresExactlyOnCrossing() {
+        let cap = AudioCapture.maxRecordingSamples
+        // Well below the cap on both sides — no crossing.
+        XCTAssertFalse(AudioCapture.crossesDurationCap(previousCount: 0, newCount: 1000))
+        // The append that reaches the cap fires.
+        XCTAssertTrue(AudioCapture.crossesDurationCap(previousCount: cap - 100, newCount: cap))
+        XCTAssertTrue(AudioCapture.crossesDurationCap(previousCount: cap - 1, newCount: cap + 500))
+        // Already past the cap — must NOT fire again (fire-once guarantee).
+        XCTAssertFalse(AudioCapture.crossesDurationCap(previousCount: cap, newCount: cap + 500))
+        XCTAssertFalse(AudioCapture.crossesDurationCap(previousCount: cap + 500, newCount: cap + 1000))
     }
 }
 

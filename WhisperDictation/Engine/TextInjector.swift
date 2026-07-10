@@ -1,7 +1,9 @@
 import CoreGraphics
 import Foundation
 
-final class TextInjector {
+/// @unchecked Sendable: the only stored state is an immutable `CGEventSource?` and
+/// a serial `DispatchQueue`. All typing runs on that queue; no mutable shared state.
+final class TextInjector: @unchecked Sendable {
     private let source: CGEventSource?
     private let typingQueue = DispatchQueue(label: "com.whisperdictation.typing", qos: .userInteractive)
 
@@ -9,11 +11,14 @@ final class TextInjector {
         source = CGEventSource(stateID: .hidSystemState)
     }
 
-    /// Type text at the current cursor position via CGEvent.
-    /// Runs on a dedicated serial queue — safe to call from any thread.
-    /// Blocks until all text is typed.
+    /// Enqueue `text` to be typed at the current cursor position via CGEvent.
+    /// Returns immediately — the actual typing happens asynchronously on a dedicated
+    /// serial queue, so callers (e.g. the whisper decode thread delivering segments)
+    /// are never blocked by the per-chunk `Thread.sleep`. The serial queue preserves
+    /// submission order, so segments are typed in the order they were decoded.
+    /// Call `flush()` to wait for all enqueued typing to finish.
     func type(text: String) {
-        typingQueue.sync {
+        typingQueue.async { [source] in
             let utf16 = Array(text.utf16)
             let chunkSize = 16
             var offset = 0
@@ -43,5 +48,14 @@ final class TextInjector {
                 }
             }
         }
+    }
+
+    /// Barrier that blocks the caller until all previously-enqueued typing has
+    /// finished. Because `typingQueue` is serial, a `sync {}` submitted after all the
+    /// `async` type() work runs only once that work drains. MUST NOT be called on the
+    /// main actor (it blocks). Intended to be called once, from the detached
+    /// transcription task, before the done sound / return to idle.
+    func flush() {
+        typingQueue.sync {}
     }
 }
