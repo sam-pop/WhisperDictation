@@ -62,6 +62,68 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertLessThanOrEqual(value, 3.0)
     }
 
+    // MARK: Getter validation (Phase 2)
+
+    /// The getter must clamp out-of-band raw values that bypassed the clamping
+    /// setter (e.g. written directly to UserDefaults by an older build or a
+    /// corrupt domain). We write raw values under the key and read back through
+    /// the getter.
+    func testToggleHoldDurationGetterClampsRawValue() {
+        let key = "toggleHoldDuration"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        UserDefaults.standard.set(999.0, forKey: key)
+        XCTAssertEqual(AppSettings.shared.toggleHoldDuration, 3.0)
+
+        UserDefaults.standard.set(-5.0, forKey: key)
+        XCTAssertEqual(AppSettings.shared.toggleHoldDuration, 0.5)
+    }
+
+    func testMinimumRecordingDurationGetterClampsRawValue() {
+        let key = "minimumRecordingDuration"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        UserDefaults.standard.set(999.0, forKey: key)
+        XCTAssertEqual(AppSettings.shared.minimumRecordingDuration, 5.0)
+
+        UserDefaults.standard.set(-5.0, forKey: key)
+        XCTAssertEqual(AppSettings.shared.minimumRecordingDuration, 0.0)
+    }
+
+    func testSelectedModelFallsBackForUnknownValue() {
+        let key = "selectedModel"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        // Unknown id → default
+        UserDefaults.standard.set("totally-bogus-model-xyz", forKey: key)
+        XCTAssertEqual(AppSettings.shared.selectedModel, "small.en")
+
+        // Known catalog id → preserved
+        UserDefaults.standard.set("base.en", forKey: key)
+        XCTAssertEqual(AppSettings.shared.selectedModel, "base.en")
+    }
+
+    func testCustomTermsCappedAt100() {
+        let settings = AppSettings.shared
+        let original = settings.customTerms
+        defer { settings.customTerms = original }
+
+        settings.customTerms = (0..<150).map { "Term\($0)" }
+        XCTAssertEqual(settings.customTerms.count, 100)
+    }
+
     func testGrammarCorrectionDefault() {
         XCTAssertTrue(AppSettings.shared.grammarCorrectionEnabled)
     }
@@ -486,6 +548,37 @@ final class DictationEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .idle)
         XCTAssertTrue(engine.lastTranscription.isEmpty)
         XCTAssertFalse(engine.isModelLoaded)
+    }
+
+    // MARK: - Prompt assembly (Phase 2)
+
+    /// A base vocabulary prompt that alone exceeds the word budget must be
+    /// truncated (whisper's ~1024-token / ~750-word limit).
+    func testBuildPromptTruncatesOversizedBase() {
+        let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
+        let result = DictationEngine.buildPrompt(base: longBase, customTerms: [])
+        XCTAssertEqual(result.split(separator: " ").count, DictationEngine.promptWordBudget)
+    }
+
+    /// Within budget, custom terms are appended after the base prompt.
+    func testBuildPromptAppendsCustomTermsWhenBudgetAllows() {
+        let result = DictationEngine.buildPrompt(base: "one two three", customTerms: ["Acme", "Widget"])
+        XCTAssertTrue(result.hasPrefix("one two three"))
+        XCTAssertTrue(result.contains("Acme"))
+        XCTAssertTrue(result.contains("Widget"))
+    }
+
+    /// When the base prompt already fills the budget, no custom terms fit.
+    func testBuildPromptOversizedBaseLeavesNoRoomForCustomTerms() {
+        let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
+        let result = DictationEngine.buildPrompt(base: longBase, customTerms: ["UniqueTermZZZ"])
+        XCTAssertFalse(result.contains("UniqueTermZZZ"))
+        XCTAssertEqual(result.split(separator: " ").count, DictationEngine.promptWordBudget)
+    }
+
+    /// Empty custom terms → the base prompt is returned unchanged (when in budget).
+    func testBuildPromptEmptyCustomTermsReturnsBase() {
+        XCTAssertEqual(DictationEngine.buildPrompt(base: "hello world", customTerms: []), "hello world")
     }
 }
 

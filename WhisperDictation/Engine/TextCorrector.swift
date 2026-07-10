@@ -12,7 +12,9 @@ final class TextCorrector: @unchecked Sendable {
 
     func correct(_ text: String) -> String {
         guard AppSettings.shared.grammarCorrectionEnabled else { return text }
+        #if DEBUG
         let startTime = CFAbsoluteTimeGetCurrent()
+        #endif
 
         var result = text
         if AppSettings.shared.numberConversionEnabled {
@@ -23,8 +25,12 @@ final class TextCorrector: @unchecked Sendable {
         result = fixCapitalization(result)
         result = fixPunctuation(result)
 
+        #if DEBUG
+        // Content-bearing: DEBUG only. Release builds (make app) never define DEBUG,
+        // so the user's dictated text is never logged in shipped binaries.
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         print("[TextCorrector] \(String(format: "%.1f", elapsed))ms: \"\(text)\" → \"\(result)\"")
+        #endif
         return result
     }
 

@@ -44,7 +44,12 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     /// Seconds the hotkey must be held to trigger start/stop in toggle mode.
     /// Clamped on write to the slider range so out-of-band programmatic writes can't break the UI.
     var toggleHoldDuration: Double {
-        get { defaults.object(forKey: Key.toggleHoldDuration.rawValue) as? Double ?? 1.5 }
+        get {
+            let stored = defaults.object(forKey: Key.toggleHoldDuration.rawValue) as? Double ?? 1.5
+            // Clamp on read too: an out-of-band raw value (older build, corrupt
+            // domain) must not escape the slider range and break the UI/logic.
+            return max(0.5, min(3.0, stored))
+        }
         set {
             let clamped = max(0.5, min(3.0, newValue))
             defaults.set(clamped, forKey: Key.toggleHoldDuration.rawValue)
@@ -53,7 +58,19 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     }
 
     var selectedModel: String {
-        get { defaults.string(forKey: Key.selectedModel.rawValue) ?? "small.en" }
+        get {
+            let stored = defaults.string(forKey: Key.selectedModel.rawValue) ?? "small.en"
+            // Fall back to the default if the stored id doesn't correspond to any
+            // catalog model (same fileName-derivation as SettingsView.isModelSelected:
+            // strip the "ggml-" prefix and ".bin" suffix). Guards against a stale id
+            // left behind after the catalog changes.
+            let isKnown = ModelManager.ModelInfo.all.contains { model in
+                model.fileName
+                    .replacingOccurrences(of: "ggml-", with: "")
+                    .replacingOccurrences(of: ".bin", with: "") == stored
+            }
+            return isKnown ? stored : "small.en"
+        }
         set { defaults.set(newValue, forKey: Key.selectedModel.rawValue); objectWillChange.send() }
     }
 
@@ -75,7 +92,11 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     }
 
     var minimumRecordingDuration: Double {
-        get { defaults.object(forKey: Key.minimumRecordingDuration.rawValue) as? Double ?? 0.3 }
+        get {
+            let stored = defaults.object(forKey: Key.minimumRecordingDuration.rawValue) as? Double ?? 0.3
+            // Clamp on read: a nonsensical raw value must not gate every recording.
+            return max(0.0, min(5.0, stored))
+        }
         set { defaults.set(newValue, forKey: Key.minimumRecordingDuration.rawValue); objectWillChange.send() }
     }
 
@@ -89,9 +110,16 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         set { defaults.set(newValue, forKey: Key.numberConversionEnabled.rawValue); objectWillChange.send() }
     }
 
+    /// Maximum number of custom vocabulary terms. Mirrors the UI cap; enforced here
+    /// so no write path (import, programmatic) can exceed the whisper prompt budget.
+    static let maxCustomTerms = 100
+
     var customTerms: [String] {
         get { defaults.stringArray(forKey: Key.customTerms.rawValue) ?? [] }
-        set { defaults.set(newValue, forKey: Key.customTerms.rawValue); objectWillChange.send() }
+        set {
+            let capped = Array(newValue.prefix(Self.maxCustomTerms))
+            defaults.set(capped, forKey: Key.customTerms.rawValue); objectWillChange.send()
+        }
     }
 
     func addCustomTerm(_ term: String) {

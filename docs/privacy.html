@@ -300,12 +300,12 @@
 
     <h2><span class="hash">#</span>Don't take our word for it</h2>
     <p>
-        The entire app is ~2,500 lines of Swift. You can audit every network-facing
+        The entire app is ~3,400 lines of Swift. You can audit every network-facing
         line of code in a single <code class="kbd">grep</code>. Try this:
     </p>
     <div class="verify">
         <div class="cmd"><span class="prompt">$</span> git clone https://github.com/sam-pop/WhisperDictation.git &amp;&amp; cd WhisperDictation</div>
-        <div class="cmd" style="margin-top: 8px;"><span class="prompt">$</span> grep -rE "URLSession|URLRequest|http" WhisperDictation/*.swift WhisperDictation/**/*.swift</div>
+        <div class="cmd" style="margin-top: 8px;"><span class="prompt">$</span> grep -rE "URLSession|URLRequest|http://|https://" --include="*.swift" WhisperDictation/</div>
         <div class="out">
             WhisperDictation/Engine/ModelManager.swift: "https://huggingface.co/ggerganov/whisper.cpp/..."<br>
             WhisperDictation/Engine/ModelManager.swift: URLSession.shared.download(from: model.url, ...)

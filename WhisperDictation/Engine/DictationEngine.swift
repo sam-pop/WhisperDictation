@@ -188,6 +188,32 @@ final class DictationEngine {
         if isHoldingForToggle { isHoldingForToggle = false }
     }
 
+    // MARK: - Prompt Assembly
+
+    /// Whisper's initial_prompt is capped at ~1024 tokens (~750 words). Exceeding it
+    /// triggers `whisper_tokenize: too many resulting tokens` and degrades accuracy
+    /// (see CLAUDE.md). We budget 700 words as a safe margin.
+    static let promptWordBudget = 700
+
+    /// Builds the whisper initial_prompt from the base vocabulary prompt plus the
+    /// user's custom terms, staying within `promptWordBudget` words. The base prompt
+    /// is truncated first if it alone exceeds the budget; custom terms then fill any
+    /// remaining word budget. Pure/static so it is unit-testable without the engine.
+    static func buildPrompt(base: String, customTerms: [String]) -> String {
+        let baseWords = base.split(separator: " ")
+        let cappedBase = baseWords.count > promptWordBudget
+            ? baseWords.prefix(promptWordBudget).joined(separator: " ")
+            : base
+
+        guard !customTerms.isEmpty else { return cappedBase }
+
+        let budget = max(0, promptWordBudget - baseWords.count)
+        let termsToAdd = Array(customTerms.prefix(budget))
+        return termsToAdd.isEmpty
+            ? cappedBase
+            : cappedBase + ", " + termsToAdd.joined(separator: ", ")
+    }
+
     // MARK: - Recording Flow
 
     private func startRecording() {
@@ -231,18 +257,10 @@ final class DictationEngine {
         state = .processing
 
         let bridge = self.whisperBridge
-        let basePrompt = AppSettings.shared.vocabularyPrompt
-        let customTerms = AppSettings.shared.customTerms
-        let prompt: String
-        if customTerms.isEmpty {
-            prompt = basePrompt
-        } else {
-            // Cap custom terms to stay under whisper's ~1024 token (~750 word) limit
-            let baseWordCount = basePrompt.split(separator: " ").count
-            let budget = max(0, 700 - baseWordCount)
-            let termsToAdd = Array(customTerms.prefix(budget))
-            prompt = termsToAdd.isEmpty ? basePrompt : basePrompt + ", " + termsToAdd.joined(separator: ", ")
-        }
+        let prompt = Self.buildPrompt(
+            base: AppSettings.shared.vocabularyPrompt,
+            customTerms: AppSettings.shared.customTerms
+        )
         let injector = self.textInjector
         let feedback = self.soundFeedback
 
@@ -268,7 +286,7 @@ final class DictationEngine {
             do {
                 _ = try bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
                     let corrected = TextCorrector.shared.correct(segment)
-                    fputs("[Streaming] \(corrected)\n", stderr)
+                    // Never log transcribed content — it's the user's private dictation.
                     injector.type(text: corrected)
                     fullText += corrected
                 }
