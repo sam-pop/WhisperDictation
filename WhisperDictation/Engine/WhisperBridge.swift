@@ -91,13 +91,16 @@ final class WhisperBridge: @unchecked Sendable {
     // MARK: - Streaming Transcription
 
     /// Transcribe with streaming: calls `onSegment` as each text segment is decoded.
-    /// Returns the full concatenated transcription when complete.
+    /// Returns the full concatenated transcription when complete. Throws
+    /// `WhisperError.transcriptionFailed` if the underlying `whisper_full` call
+    /// returns a non-zero status, so callers can surface the failure instead of
+    /// silently receiving an empty string.
     func transcribe(
         audioBuffer: [Float],
         prompt: String = "",
         onSegment: ((String) -> Void)? = nil
-    ) -> String {
-        queue.sync {
+    ) throws -> String {
+        try queue.sync {
             let startTime = CFAbsoluteTimeGetCurrent()
             let audioDuration = Double(audioBuffer.count) / 16000.0
 
@@ -179,7 +182,7 @@ final class WhisperBridge: @unchecked Sendable {
 
             guard result == 0 else {
                 fputs("[WhisperBridge] Failed (\(result)) in \(String(format: "%.2f", elapsed))s\n", stderr)
-                return ""
+                throw WhisperError.transcriptionFailed(code: result)
             }
 
             // Collect full transcription (callback already typed segments incrementally)
@@ -200,11 +203,14 @@ final class WhisperBridge: @unchecked Sendable {
 
 enum WhisperError: LocalizedError {
     case modelLoadFailed(String)
+    case transcriptionFailed(code: Int32)
 
     var errorDescription: String? {
         switch self {
         case .modelLoadFailed(let path):
             return "Failed to load Whisper model at: \(path)"
+        case .transcriptionFailed(let code):
+            return "Transcription failed (whisper error \(code)). Try again or switch models in Settings."
         }
     }
 }

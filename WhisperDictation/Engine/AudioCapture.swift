@@ -5,6 +5,12 @@ final class AudioCapture {
     private var audioBuffer: [Float] = []
     private let bufferLock = NSLock()
 
+    /// Invoked when the audio engine's configuration changes while recording
+    /// (e.g. the selected input device is unplugged). Called on an arbitrary
+    /// thread — the handler must hop to the main actor before touching UI state.
+    var onConfigurationChange: (() -> Void)?
+    private var configObserver: NSObjectProtocol?
+
     private static let sampleRate: Double = 16000
     private static let desiredFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
@@ -15,6 +21,12 @@ final class AudioCapture {
 
     func startRecording() throws {
         let engine = AVAudioEngine()
+
+        // Apply the user-selected input device BEFORE prepare()/reading the format,
+        // so the hardware format reflects the chosen device. Failure falls back to
+        // the system default device (logged inside applySelectedDevice).
+        AudioDeviceManager.shared.applySelectedDevice(to: engine)
+
         let inputNode = engine.inputNode
 
         // prepare() FIRST — settles the audio hardware format
@@ -27,7 +39,10 @@ final class AudioCapture {
             throw AudioCaptureError.invalidFormat
         }
 
-        let converter = AVAudioConverter(from: hwFormat, to: Self.desiredFormat)!
+        guard let converter = AVAudioConverter(from: hwFormat, to: Self.desiredFormat) else {
+            fputs("[AudioCapture] Could not create converter from hardware format\n", stderr)
+            throw AudioCaptureError.invalidFormat
+        }
 
         bufferLock.lock()
         audioBuffer.removeAll()
@@ -77,6 +92,18 @@ final class AudioCapture {
             }
         }
 
+        // Detect audio configuration changes mid-recording (device unplugged, a new
+        // default device appearing, sample-rate change — all invalidate the tap).
+        // Observe this specific engine only. Removed in stopRecording().
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            fputs("[AudioCapture] Engine configuration changed\n", stderr)
+            self?.onConfigurationChange?()
+        }
+
         try engine.start()
         self.audioEngine = engine
         fputs("[AudioCapture] Recording started\n", stderr)
@@ -87,6 +114,10 @@ final class AudioCapture {
     ///   buffer. Used by toggle hotkey mode to discard the silent hold-to-stop interval, which
     ///   would otherwise be transcribed by Whisper as hallucinated punctuation/filler.
     func stopRecording(trimTrailingSeconds: TimeInterval = 0) -> [Float] {
+        if let configObserver {
+            NotificationCenter.default.removeObserver(configObserver)
+            self.configObserver = nil
+        }
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil

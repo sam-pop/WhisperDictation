@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import WhisperDictation
 
 // MARK: - Settings Tests
@@ -170,6 +171,83 @@ final class ModelManagerTests: XCTestCase {
         let vad = ModelManager.ModelInfo.vadSilero
         XCTAssertTrue(vad.url.absoluteString.contains("whisper-vad"))
         XCTAssertEqual(vad.fileName, "ggml-silero-v5.1.2.bin")
+    }
+
+    // MARK: Download Integrity (Phase 1)
+
+    /// Every catalog model AND the VAD model must carry a well-formed pinned
+    /// SHA256 (64 lowercase hex chars). A blank/short hash means a model shipped
+    /// without integrity protection.
+    func testEveryModelHasWellFormedSHA256() {
+        let allModels = ModelManager.ModelInfo.all + [ModelManager.ModelInfo.vadSilero]
+        let hexSet = CharacterSet(charactersIn: "0123456789abcdef")
+        for model in allModels {
+            let hash = model.sha256
+            XCTAssertEqual(hash.count, 64, "\(model.name) sha256 must be 64 chars, got \(hash.count)")
+            XCTAssertTrue(
+                hash.unicodeScalars.allSatisfy { hexSet.contains($0) },
+                "\(model.name) sha256 must be lowercase hex: \(hash)"
+            )
+        }
+    }
+
+    func testModelSHA256AreUnique() {
+        let allModels = ModelManager.ModelInfo.all + [ModelManager.ModelInfo.vadSilero]
+        let hashes = allModels.map(\.sha256)
+        XCTAssertEqual(Set(hashes).count, hashes.count, "Pinned model hashes must all be distinct")
+    }
+
+    func testAcceptableStatusCodes() {
+        XCTAssertTrue(ModelManager.isAcceptableStatusCode(200))
+        XCTAssertTrue(ModelManager.isAcceptableStatusCode(206))
+        XCTAssertTrue(ModelManager.isAcceptableStatusCode(299))
+        XCTAssertFalse(ModelManager.isAcceptableStatusCode(199))
+        XCTAssertFalse(ModelManager.isAcceptableStatusCode(300))
+        XCTAssertFalse(ModelManager.isAcceptableStatusCode(304))
+        XCTAssertFalse(ModelManager.isAcceptableStatusCode(404))
+        XCTAssertFalse(ModelManager.isAcceptableStatusCode(500))
+    }
+
+    func testSHA256KnownVector() throws {
+        // Canonical SHA256("abc")
+        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wd-sha-abc-\(UUID().uuidString)")
+        try Data("abc".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try ModelManager.sha256Hex(ofFileAt: url), expected)
+    }
+
+    func testSHA256EmptyFile() throws {
+        // Canonical SHA256 of zero bytes
+        let expected = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wd-sha-empty-\(UUID().uuidString)")
+        try Data().write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try ModelManager.sha256Hex(ofFileAt: url), expected)
+    }
+
+    /// Streaming hash of a multi-chunk (>1 MB) file must match a one-shot hash of
+    /// the same bytes — proves the chunked read covers the whole file with no
+    /// dropped/overlapping bytes at chunk boundaries.
+    func testSHA256StreamingMatchesOneShotMultiChunk() throws {
+        let byteCount = 3 * 1024 * 1024 + 7 // deliberately not a chunk multiple
+        var data = Data(count: byteCount)
+        for i in 0..<byteCount { data[i] = UInt8((i * 31 + 7) & 0xff) }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wd-sha-multi-\(UUID().uuidString)")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let streamed = try ModelManager.sha256Hex(ofFileAt: url)
+        let oneShot = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(streamed, oneShot)
+    }
+
+    func testSHA256MissingFileThrows() {
+        let url = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).bin")
+        XCTAssertThrowsError(try ModelManager.sha256Hex(ofFileAt: url))
     }
 }
 
@@ -419,6 +497,15 @@ final class WhisperBridgeTests: XCTestCase {
             XCTAssertTrue(error is WhisperError)
             XCTAssertTrue(error.localizedDescription.contains("/nonexistent/model.bin"))
         }
+    }
+
+    /// transcribe() now surfaces inference failures rather than returning "".
+    /// We can't force whisper_full to fail without a loaded model, but the error
+    /// case that carries the failure must produce a usable, non-empty description.
+    func testTranscriptionFailedErrorHasDescription() {
+        let error = WhisperError.transcriptionFailed(code: -7)
+        XCTAssertNotNil(error.errorDescription)
+        XCTAssertTrue(error.errorDescription?.contains("-7") ?? false)
     }
 }
 

@@ -498,12 +498,11 @@ private struct ModelSection: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.system(size: 18))
-                    } else if modelManager.isDownloading {
-                        ProgressView(value: modelManager.downloadProgress)
-                            .frame(width: 60)
+                    } else if modelManager.isDownloading(.vadSilero) {
+                        downloadingControls(for: .vadSilero)
                     } else {
                         Button("Download") {
-                            Task { try? await modelManager.downloadModel(.vadSilero) }
+                            modelManager.startDownload(.vadSilero)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -603,17 +602,34 @@ private struct ModelSection: View {
                             .foregroundStyle(.green)
                             .font(.system(size: 18))
                     }
-                } else if modelManager.isDownloading {
-                    ProgressView(value: modelManager.downloadProgress)
-                        .frame(width: 60)
+                } else if modelManager.isDownloading(model) {
+                    downloadingControls(for: model)
                 } else {
                     Button("Download") {
-                        Task { try? await modelManager.downloadModel(model) }
+                        modelManager.startDownload(model)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             }
+        }
+    }
+
+    /// Progress bar + cancel affordance for a model that is actively downloading.
+    @ViewBuilder
+    private func downloadingControls(for model: ModelManager.ModelInfo) -> some View {
+        HStack(spacing: 8) {
+            ProgressView(value: modelManager.downloadProgress(for: model) ?? 0)
+                .frame(width: 60)
+            Button {
+                modelManager.cancelDownload(name: model.fileName)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Cancel download")
         }
     }
 

@@ -106,9 +106,10 @@ private struct ModelDownloadRow: View {
 
             VStack(alignment: .leading) {
                 Text("Whisper Model").fontWeight(.medium)
-                if modelManager.isDownloading {
-                    ProgressView(value: modelManager.downloadProgress)
-                    Text("Downloading... \(Int(modelManager.downloadProgress * 100))%")
+                if modelManager.isDownloading(.smallEn) {
+                    let progress = modelManager.downloadProgress(for: .smallEn) ?? 0
+                    ProgressView(value: progress)
+                    Text("Downloading... \(Int(progress * 100))%")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if modelManager.activeModelPath() != nil {
                     Text("Small English model ready").font(.caption).foregroundStyle(.secondary)
@@ -119,11 +120,9 @@ private struct ModelDownloadRow: View {
 
             Spacer()
 
-            if modelManager.activeModelPath() == nil && !modelManager.isDownloading {
+            if modelManager.activeModelPath() == nil && !modelManager.isDownloading(.smallEn) {
                 Button("Download") {
-                    Task {
-                        try? await modelManager.downloadModel(.smallEn)
-                    }
+                    modelManager.startDownload(.smallEn)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

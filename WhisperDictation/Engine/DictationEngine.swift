@@ -16,6 +16,11 @@ final class DictationEngine {
     private(set) var isModelLoaded: Bool = false
     private(set) var modelLoadError: String?
 
+    /// Last transcription/recording failure surfaced to the user (inference failure,
+    /// audio input configuration change). Cleared when a new recording starts and on
+    /// the next successful dictation.
+    private(set) var transcriptionError: String?
+
     /// True while the user is holding the hotkey but the toggle-mode threshold hasn't yet fired.
     /// Drives the menu bar hold indicator.
     private(set) var isHoldingForToggle: Bool = false
@@ -38,6 +43,9 @@ final class DictationEngine {
     init() {
         let axTrusted = AXIsProcessTrusted()
         fputs("[DictationEngine] Init. Accessibility: \(axTrusted)\n", stderr)
+        audioCapture.onConfigurationChange = { [weak self] in
+            self?.handleInputConfigurationChange()
+        }
         setupHotkeyMonitor()
         hotkeyMonitor?.start()
         loadModelAsync()
@@ -185,6 +193,7 @@ final class DictationEngine {
     private func startRecording() {
         guard state == .idle, isModelLoaded else { return }
 
+        transcriptionError = nil
         state = .recording
         recordingStartTime = Date()
         soundFeedback.playStartSound()
@@ -256,20 +265,46 @@ final class DictationEngine {
 
             // Stream: correct and type each segment as it's decoded
             var fullText = ""
-            let _ = bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                let corrected = TextCorrector.shared.correct(segment)
-                fputs("[Streaming] \(corrected)\n", stderr)
-                injector.type(text: corrected)
-                fullText += corrected
+            do {
+                _ = try bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
+                    let corrected = TextCorrector.shared.correct(segment)
+                    fputs("[Streaming] \(corrected)\n", stderr)
+                    injector.type(text: corrected)
+                    fullText += corrected
+                }
+            } catch {
+                fputs("[DictationEngine] Transcription failed: \(error)\n", stderr)
+                await MainActor.run { [weak self] in
+                    self?.transcriptionError = error.localizedDescription
+                }
+                await resetToIdle()
+                return
             }
 
             await MainActor.run { [weak self] in
                 if !fullText.isEmpty {
                     self?.lastTranscription = fullText
+                    self?.transcriptionError = nil
                 }
             }
 
             await resetToIdle()
+        }
+    }
+
+    /// Invoked (on an arbitrary thread) when the audio engine's configuration
+    /// changes mid-recording — a device being unplugged, a newly plugged-in device
+    /// becoming default, or a sample-rate change. All invalidate the running tap,
+    /// so stop cleanly and surface the reason. No auto-restart in this phase.
+    private func handleInputConfigurationChange() {
+        Task { @MainActor [weak self] in
+            guard let self, self.state == .recording else { return }
+            fputs("[DictationEngine] Audio input configuration changed during recording — stopping.\n", stderr)
+            _ = self.audioCapture.stopRecording()
+            self.soundFeedback.playStopSound()
+            self.recordingStartTime = nil
+            self.state = .idle
+            self.transcriptionError = "Audio input changed. Recording stopped."
         }
     }
 }
