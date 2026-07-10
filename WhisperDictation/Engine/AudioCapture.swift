@@ -9,9 +9,25 @@ final class AudioCapture {
     /// (e.g. the selected input device is unplugged). Called on an arbitrary
     /// thread — the handler must hop to the main actor before touching UI state.
     var onConfigurationChange: (() -> Void)?
+
+    /// Invoked once when the recording reaches the maximum duration cap. Called on
+    /// the audio tap thread — the handler must hop to the main actor. The engine
+    /// should treat this exactly like the user stopping (transcribe what was captured).
+    var onMaxDurationReached: (() -> Void)?
     private var configObserver: NSObjectProtocol?
 
     private static let sampleRate: Double = 16000
+
+    /// Hard cap on recording length (5 minutes). Guards against an unbounded buffer
+    /// if a toggle-mode session is left running — 5 min ≈ 18.4 MB of Float32 at 16kHz.
+    static let maxRecordingSeconds: Double = 300
+    static let maxRecordingSamples = Int(sampleRate * maxRecordingSeconds)
+
+    /// True exactly on the append that first crosses the duration cap, so the stop is
+    /// triggered once and only once. Pure/static for unit testing without hardware.
+    static func crossesDurationCap(previousCount: Int, newCount: Int) -> Bool {
+        previousCount < maxRecordingSamples && newCount >= maxRecordingSamples
+    }
     private static let desiredFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: sampleRate,
@@ -45,17 +61,25 @@ final class AudioCapture {
         }
 
         bufferLock.lock()
-        audioBuffer.removeAll()
+        audioBuffer.removeAll(keepingCapacity: true)
+        // Pre-size for ~60s of 16kHz mono Float32 to avoid repeated reallocation of
+        // the hot append path. The buffer still grows if a session runs longer (up to
+        // the 5-minute cap enforced below).
+        audioBuffer.reserveCapacity(Int(Self.sampleRate) * 60)
         bufferLock.unlock()
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { [weak self] buffer, _ in
-            fputs(".", stderr) // Heartbeat — proves callback is firing
+            #if DEBUG
+            fputs(".", stderr) // Heartbeat — proves callback is firing (DEBUG only)
+            #endif
             guard let self else { return }
 
             let ratio = Self.sampleRate / hwFormat.sampleRate
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
             guard let converted = AVAudioPCMBuffer(pcmFormat: Self.desiredFormat, frameCapacity: capacity) else {
+                #if DEBUG
                 fputs("X", stderr)
+                #endif
                 return
             }
 
@@ -66,7 +90,9 @@ final class AudioCapture {
 
             var consumed = false
             var convErr: NSError?
-            let status = converter.convert(to: converted, error: &convErr) { _, outStatus in
+            // Result status is only useful for the DEBUG heartbeat below; discard it in
+            // release so it isn't an unused binding (DEBUG is not defined by `make app`).
+            _ = converter.convert(to: converted, error: &convErr) { _, outStatus in
                 if consumed {
                     outStatus.pointee = .noDataNow
                     return nil
@@ -77,18 +103,28 @@ final class AudioCapture {
             }
 
             if let convErr {
+                #if DEBUG
                 fputs("[E:\(convErr.code)]", stderr)
+                #endif
                 return
             }
 
             if converted.frameLength > 0, let data = converted.floatChannelData {
                 let samples = Array(UnsafeBufferPointer(start: data[0], count: Int(converted.frameLength)))
                 self.bufferLock.lock()
+                let previousCount = self.audioBuffer.count
                 self.audioBuffer.append(contentsOf: samples)
+                let crossedCap = Self.crossesDurationCap(previousCount: previousCount, newCount: self.audioBuffer.count)
                 self.bufferLock.unlock()
-                fputs("+", stderr) // successful conversion
+                #if DEBUG
+                fputs("+", stderr) // successful conversion (DEBUG only)
+                #endif
+                // Fires exactly once (on the crossing append). Hop handled by the engine.
+                if crossedCap { self.onMaxDurationReached?() }
             } else {
-                fputs("[s:\(status.rawValue) f:\(converted.frameLength)]", stderr)
+                #if DEBUG
+                fputs("[f:\(converted.frameLength)]", stderr)
+                #endif
             }
         }
 

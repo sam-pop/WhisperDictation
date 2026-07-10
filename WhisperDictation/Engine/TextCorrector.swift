@@ -184,15 +184,21 @@ final class TextCorrector: @unchecked Sendable {
 
     // MARK: - Pass 1: Acronym & Term Casing
 
-    /// Word-boundary-aware replacement of common dev terms
+    /// Word-boundary-aware replacement of common dev terms.
+    /// Uses a single compiled alternation regex (built once, see `compiledTerms`)
+    /// plus a match→replacement lookup, instead of recompiling ~230 patterns on
+    /// every call. Matches are collected against the original string and applied
+    /// right-to-left so earlier ranges stay valid — same technique as `fixCustomTerms`.
     private func fixAcronymsAndTerms(_ text: String) -> String {
+        let compiled = Self.compiledTerms
         var result = text
-        for (pattern, replacement) in Self.termPatterns {
-            result = result.replacingOccurrences(
-                of: pattern,
-                with: replacement,
-                options: .regularExpression
-            )
+        let matches = compiled.regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: text) else { continue }
+            let matched = String(text[range]).lowercased()
+            if let replacement = compiled.lookup[matched] {
+                result.replaceSubrange(range, with: replacement)
+            }
         }
         return result
     }
@@ -310,9 +316,22 @@ final class TextCorrector: @unchecked Sendable {
 
     // MARK: - Term Dictionary
 
-    /// Compiled regex patterns for word-boundary-aware term replacement.
-    /// Format: (regex pattern, replacement string)
-    private static let termPatterns: [(String, String)] = {
+    /// One compiled alternation regex plus a lowercased-match → replacement lookup,
+    /// built once at first use.
+    private struct CompiledTerms {
+        let regex: NSRegularExpression
+        let lookup: [String: String]
+    }
+
+    /// Compiled term matcher for word-boundary-aware dev-term casing.
+    /// - The lookup is keyed by the lowercased match; `upperTerms` are seeded first
+    ///   and `mixedCaseTerms` second, so a later definition wins — matching the old
+    ///   sequential "last pattern applied wins" behavior (and de-duping repeats).
+    /// - Alternatives are sorted longest-first so a specific term is never shadowed
+    ///   by a shorter prefix in the alternation (e.g. "postgresql" before "postgres",
+    ///   "ci/cd" before "ci"/"cd", "javascript" before "java"). Word boundaries plus
+    ///   this ordering preserve the original per-pattern semantics exactly.
+    private static let compiledTerms: CompiledTerms = {
         // Terms where the match is case-insensitive and replacement is the correct form
         let upperTerms = [
             // Pure acronyms (all caps)
@@ -393,20 +412,22 @@ final class TextCorrector: @unchecked Sendable {
             ("websocket", "WebSocket"),
         ]
 
-        var patterns: [(String, String)] = []
+        var lookup: [String: String] = [:]
+        for term in upperTerms { lookup[term] = term.uppercased() }
+        for (match, replacement) in mixedCaseTerms { lookup[match] = replacement }
 
-        // Pure uppercase acronyms
-        for term in upperTerms {
-            let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: term))\\b"
-            patterns.append((pattern, term.uppercased()))
-        }
+        // Longest-first (ties broken alphabetically for determinism) so specific
+        // terms win over shorter prefixes sharing a start position.
+        let alternatives = lookup.keys
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0 < $1 }
+            .map { NSRegularExpression.escapedPattern(for: $0) }
+        let pattern = "(?i)\\b(?:" + alternatives.joined(separator: "|") + ")\\b"
 
-        // Mixed case terms
-        for (match, replacement) in mixedCaseTerms {
-            let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: match))\\b"
-            patterns.append((pattern, replacement))
-        }
-
-        return patterns
+        // Force-try: the pattern is built entirely from escaped literals and fixed
+        // anchors, so compilation cannot fail on any input. A throw here would be a
+        // programmer error in the term list, surfaced immediately at first use.
+        // swiftlint:disable:next force_try
+        let regex = try! NSRegularExpression(pattern: pattern)
+        return CompiledTerms(regex: regex, lookup: lookup)
     }()
 }
