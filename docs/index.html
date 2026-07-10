@@ -894,7 +894,7 @@
 
             <div class="verify-card">
                 <p class="lead">Every network call in the entire app, in one grep:</p>
-                <div class="cmd-line"><span class="prompt">$</span> grep -rE "URLSession|http" WhisperDictation/**/*.swift</div>
+                <div class="cmd-line"><span class="prompt">$</span> grep -rE "URLSession|http://|https://" --include="*.swift" WhisperDictation/</div>
                 <div class="out">
                     ModelManager.swift: "https://huggingface.co/..."<br>
                     ModelManager.swift: URLSession.shared.download(from: model.url)

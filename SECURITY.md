@@ -14,6 +14,7 @@ WhisperDictation is a macOS dictation app that requires two sensitive permission
 ### What the app does NOT do
 
 - No audio or transcription data leaves the device. Ever.
+- No logging of transcribed text. Dictated content is never written to disk, Console.app, or the unified log — it is typed at the cursor and discarded.
 - No telemetry, analytics, crash reporting, or any form of tracking.
 - No network requests except for **user-initiated model downloads** from HuggingFace.
 - No automatic updates / update server.
@@ -23,12 +24,12 @@ WhisperDictation is a macOS dictation app that requires two sensitive permission
 
 ## Auditability
 
-The entire app is ~2,500 lines of Swift. You can verify every network-facing line in one command:
+The entire app is ~3,400 lines of Swift. You can verify every network-facing line in one command:
 
 ```bash
 git clone https://github.com/sam-pop/WhisperDictation.git
 cd WhisperDictation
-grep -rE "URLSession|URLRequest|http://|https://|NSURLConnection|Network\.framework" WhisperDictation/**/*.swift
+grep -rE "URLSession|URLRequest|http://|https://|NSURLConnection|Network\.framework" --include='*.swift' WhisperDictation/
 ```
 
 The only matches are in `WhisperDictation/Engine/ModelManager.swift` — URLs for HuggingFace model files and the `URLSession.shared.download` call that fetches them when the user clicks "Download" in Settings > Model.

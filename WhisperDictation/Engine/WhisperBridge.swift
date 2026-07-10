@@ -195,7 +195,12 @@ final class WhisperBridge: @unchecked Sendable {
             }
 
             let trimmed = transcription.trimmingCharacters(in: .whitespacesAndNewlines)
+            #if DEBUG
+            // Content-bearing form is DEBUG-only; release logs timing without the text.
             fputs("[WhisperBridge] Done (\(String(format: "%.2f", elapsed))s): \"\(trimmed)\"\n", stderr)
+            #else
+            fputs("[WhisperBridge] Done (\(String(format: "%.2f", elapsed))s)\n", stderr)
+            #endif
             return trimmed
         }
     }
