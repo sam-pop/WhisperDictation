@@ -1,5 +1,16 @@
 import Foundation
 
+/// Controls the position-dependent passes of correction so live-mode chunks
+/// can be joined append-only. `.standalone` reproduces the legacy behavior
+/// exactly (golden-master locked).
+struct CorrectionContext {
+    /// The text begins a sentence: capitalize its first letter.
+    let atSentenceStart: Bool
+    /// Append a trailing period when the text lacks terminal punctuation.
+    let appendPeriod: Bool
+    static let standalone = CorrectionContext(atSentenceStart: true, appendPeriod: true)
+}
+
 final class TextCorrector: @unchecked Sendable {
     static let shared = TextCorrector()
 
@@ -11,6 +22,10 @@ final class TextCorrector: @unchecked Sendable {
     private var cachedLookup: [String: String] = [:]  // lowercased → original casing
 
     func correct(_ text: String) -> String {
+        correct(text, context: .standalone)
+    }
+
+    func correct(_ text: String, context: CorrectionContext) -> String {
         guard AppSettings.shared.grammarCorrectionEnabled else { return text }
         #if DEBUG
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -22,8 +37,8 @@ final class TextCorrector: @unchecked Sendable {
         }
         result = fixAcronymsAndTerms(result)
         result = fixCustomTerms(result)
-        result = fixCapitalization(result)
-        result = fixPunctuation(result)
+        result = fixCapitalization(result, atSentenceStart: context.atSentenceStart)
+        result = fixPunctuation(result, appendPeriod: context.appendPeriod)
 
         #if DEBUG
         // Content-bearing: DEBUG only. Release builds (make app) never define DEBUG,
@@ -236,16 +251,16 @@ final class TextCorrector: @unchecked Sendable {
 
     // MARK: - Pass 2: Capitalization
 
-    private func fixCapitalization(_ text: String) -> String {
+    private func fixCapitalization(_ text: String, atSentenceStart: Bool) -> String {
         var result = text
 
-        // Capitalize first character
-        if let first = result.first, first.isLowercase {
+        // Capitalize first character — only when the text starts a sentence
+        if atSentenceStart, let first = result.first, first.isLowercase {
             result = first.uppercased() + result.dropFirst()
         }
 
         // Capitalize after sentence-ending punctuation
-        result = capitalizeSentenceStarts(result)
+        result = capitalizeSentenceStarts(result, capitalizeFirst: atSentenceStart)
 
         // Capitalize standalone "i"
         result = result.replacingOccurrences(
@@ -263,9 +278,9 @@ final class TextCorrector: @unchecked Sendable {
         return result
     }
 
-    private func capitalizeSentenceStarts(_ text: String) -> String {
+    private func capitalizeSentenceStarts(_ text: String, capitalizeFirst: Bool) -> String {
         var chars = Array(text)
-        var capitalizeNext = true
+        var capitalizeNext = capitalizeFirst
 
         for i in chars.indices {
             if capitalizeNext && chars[i].isLetter {
@@ -282,7 +297,7 @@ final class TextCorrector: @unchecked Sendable {
 
     // MARK: - Pass 3: Punctuation Cleanup
 
-    private func fixPunctuation(_ text: String) -> String {
+    private func fixPunctuation(_ text: String, appendPeriod: Bool) -> String {
         var result = text
 
         // Remove space before punctuation: "hello ." → "hello."
@@ -303,8 +318,10 @@ final class TextCorrector: @unchecked Sendable {
         result = result.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Add period at end if missing punctuation
-        // But not for: short text, numbers, or text already ending with punctuation
-        if result.count > 3,
+        // But not for: mid-sentence chunks, short text, numbers, or text already
+        // ending with punctuation
+        if appendPeriod,
+           result.count > 3,
            let last = result.last,
            !".!?,;:\"')".contains(last),
            !last.isNumber {
