@@ -129,10 +129,10 @@ final class VADSegmenter {
         let feed = Array(pending.prefix(consumed))
         pending.removeFirst(consumed)
 
-        var probs: [Float] = []
+        var probs: [Float]?
         feed.withUnsafeBufferPointer { ptr in
             guard whisper_vad_detect_speech_no_reset(vadContext, ptr.baseAddress, Int32(feed.count)) else {
-                fputs("[VADSegmenter] detect_speech failed — dropping \(feed.count) samples from VAD (audio buffer unaffected)\n", stderr)
+                fputs("[VADSegmenter] detect_speech failed — dropping \(feed.count) samples from chunking (capture buffer unaffected)\n", stderr)
                 return
             }
             let n = Int(whisper_vad_n_probs(vadContext))
@@ -141,6 +141,15 @@ final class VADSegmenter {
             }
         }
 
+        // Alignment invariant, maintained here: between events,
+        // chunkProbs.count * windowSamples == chunkSamples.count — that exact
+        // correspondence is what makes commit slicing land on the right sample.
+        // So samples enter the accumulator only together with their window
+        // probabilities. If the VAD call fails, these samples are dropped from
+        // chunking rather than accumulated unanalyzed: a ~0.26 s gap in the
+        // chunk stream on a rare C failure beats every later chunk boundary
+        // being shifted until the next resetSession().
+        guard let probs else { return }
         chunkSamples.append(contentsOf: feed)
         ingest(probs: probs)
     }
