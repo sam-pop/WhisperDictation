@@ -127,18 +127,28 @@ final class WhisperBridge: @unchecked Sendable {
     ///
     /// Throws `WhisperError.transcriptionFailed` on a non-zero `whisper_full` status,
     /// or `WhisperError.cancelled` if `cancelTranscription()` aborted the decode.
+    ///
+    /// Pass `cancelFlag` to drive cancellation from outside; omit it (the default) and
+    /// each call gets its own flag. An external flag may be *shared* across several
+    /// queued `transcribe` calls (live sessions do this, so one flip cancels the whole
+    /// session). `cancelTranscription()` still only targets the most recent call's flag —
+    /// live callers cancel by flipping the shared flag directly.
+    ///
+    /// `vad: false` skips whisper's internal VAD for this call only.
     func transcribe(
         audioBuffer: [Float],
         prompt: String = "",
+        cancelFlag externalFlag: CancellationFlag? = nil,
+        vad: Bool = true,
         onSegment: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
-        let cancelFlag = CancellationFlag()
+        let cancelFlag = externalFlag ?? CancellationFlag()
         setActiveCancelFlag(cancelFlag)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             queue.async {
                 defer { self.clearActiveCancelFlag(ifCurrent: cancelFlag) }
                 do {
-                    let result = try self.runInference(audioBuffer: audioBuffer, prompt: prompt, onSegment: onSegment, cancelFlag: cancelFlag)
+                    let result = try self.runInference(audioBuffer: audioBuffer, prompt: prompt, vadEnabled: vad, onSegment: onSegment, cancelFlag: cancelFlag)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -178,6 +188,7 @@ final class WhisperBridge: @unchecked Sendable {
     private func runInference(
         audioBuffer: [Float],
         prompt: String,
+        vadEnabled: Bool,
         onSegment: (@Sendable (String) -> Void)?,
         cancelFlag: CancellationFlag
     ) throws -> String {
@@ -224,8 +235,10 @@ final class WhisperBridge: @unchecked Sendable {
             : max(1, ProcessInfo.processInfo.activeProcessorCount)
         params.n_threads = Int32(threadCount)
 
-        // VAD
-        if let vadPath = self.vadModelPath {
+        // VAD — skippable per call: live-mode chunks are already speech-trimmed
+        // by the segmenter, and whisper's internal VAD defaults (250 ms min
+        // speech) can silently discard a barely-min chunk.
+        if vadEnabled, let vadPath = self.vadModelPath {
             params.vad = true
             vadPathCStr = strdup(vadPath)
             params.vad_model_path = UnsafePointer(vadPathCStr)
