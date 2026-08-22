@@ -380,8 +380,7 @@ final class DictationEngine {
                 _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
                     let corrected = TextCorrector.shared.correct(segment)
                     // Never log transcribed content — it's the user's private dictation.
-                    injector.type(text: corrected)
-                    collected.append(corrected)
+                    injector.type(text: collected.joinAndAppend(corrected))
                 }
             } catch let error as WhisperError where error.isCancellation {
                 // User-intended cancel: reset to idle without surfacing an error.
@@ -439,5 +438,15 @@ final class DictationEngine {
 /// `@unchecked Sendable`.
 final class TranscriptCollector: @unchecked Sendable {
     private(set) var text: String = ""
-    func append(_ segment: String) { text += segment }
+
+    /// Returns `segment` as it should be typed — with a leading space when
+    /// joining onto already-collected text — and appends that same piece to
+    /// `text`, so the typed stream and the collected transcript cannot drift.
+    /// The separator is applied AFTER correction: the corrector trims leading
+    /// whitespace, so a pre-correction separator would be eaten.
+    func joinAndAppend(_ segment: String) -> String {
+        let piece = text.isEmpty ? segment : " " + segment
+        text += piece
+        return piece
+    }
 }
