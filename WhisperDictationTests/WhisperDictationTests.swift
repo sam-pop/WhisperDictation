@@ -617,6 +617,41 @@ final class DictationEngineTests: XCTestCase {
     }
 }
 
+// MARK: - buildPrompt committed-transcript tail
+
+/// The live-mode context carry: previously committed transcript text is appended
+/// last (nearest the decode), truncated to the last 50 words and to whatever word
+/// budget the base prompt and custom terms leave behind.
+final class BuildPromptTailTests: XCTestCase {
+    func testDefaultOmitsTailAndMatchesTwoArgCall() {
+        XCTAssertEqual(DictationEngine.buildPrompt(base: "a b c", customTerms: ["X"]),
+                       DictationEngine.buildPrompt(base: "a b c", customTerms: ["X"], transcriptTail: ""))
+    }
+
+    func testTailAppendedLast() {
+        let p = DictationEngine.buildPrompt(base: "vocab", customTerms: ["Term"], transcriptTail: "we did the thing")
+        XCTAssertTrue(p.hasSuffix("we did the thing"))
+        XCTAssertTrue(p.hasPrefix("vocab"))
+    }
+
+    func testTailTruncatedToLastFiftyWords() {
+        let tail = (1...80).map(String.init).joined(separator: " ")
+        let p = DictationEngine.buildPrompt(base: "v", customTerms: [], transcriptTail: tail)
+        XCTAssertFalse(p.contains(" 30 "))          // words 1-30 dropped
+        XCTAssertTrue(p.hasSuffix("79 80"))          // last 50 kept: 31...80
+    }
+
+    func testTailRespectsRemainingBudgetByActualWordCount() {
+        let base = (1...690).map { "b\($0)" }.joined(separator: " ")  // 690 words
+        let tail = (1...40).map { "t\($0)" }.joined(separator: " ")   // 40 words, budget left = 10
+        let p = DictationEngine.buildPrompt(base: base, customTerms: [], transcriptTail: tail)
+        let words = p.split(separator: " ")
+        XCTAssertLessThanOrEqual(words.count, DictationEngine.promptWordBudget)
+        XCTAssertTrue(p.hasSuffix("t39 t40"))        // last 10 tail words kept
+        XCTAssertFalse(p.contains("t30 "))
+    }
+}
+
 // MARK: - WhisperBridge Tests
 
 final class WhisperBridgeTests: XCTestCase {
