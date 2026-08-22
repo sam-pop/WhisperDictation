@@ -621,6 +621,11 @@ final class DictationEngine {
         audioCapture.onSamples = nil
         _ = liveSegmenter?.finishAndCollectResidual()   // discard residual
         liveContinuation?.finish()
+        // Same hand-off as stopLiveSession: a cancel arriving during this drain
+        // must flip the session flag deterministically. Without it the cancel
+        // falls through to the bridge's single-flight flag, which only happens
+        // to work while a chunk decode is in flight. Cleared in returnToIdle().
+        drainCancelFlag = liveSessionFlag
         clearLiveSessionReferences()
     }
 
@@ -673,6 +678,14 @@ final class DictationEngine {
 /// serially) and read once after the transcribe `await` returns, which happens-after
 /// all appends. That ordering makes the unsynchronized access sound; hence
 /// `@unchecked Sendable`.
+///
+/// The live consumer extends that ordering rather than breaking it: one collector is
+/// shared across a session's sequential decodes, and its reads (`text` for the next
+/// chunk's prompt tail and the finish block; `atSentenceStart` inside a later decode's
+/// segment callback) are still never concurrent with a write. Each `await transcribe`
+/// in the single consumer loop is a happens-after edge over that decode's whisper-queue
+/// writes, and the next decode — the only other writer — starts only after that await
+/// returns. So at any instant exactly one thread touches `text`.
 final class TranscriptCollector: @unchecked Sendable {
     private(set) var text: String = ""
 
