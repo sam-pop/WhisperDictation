@@ -174,6 +174,21 @@ final class AppSettingsTests: XCTestCase {
     }
 }
 
+// MARK: - Live Dictation Setting Tests
+
+final class LiveDictationSettingTests: XCTestCase {
+    func testLiveDictationEnabledRoundTrip() {
+        let settings = AppSettings.shared
+        let saved = settings.liveDictationEnabled          // save user's real value
+        defer { settings.liveDictationEnabled = saved }    // restore
+
+        settings.liveDictationEnabled = true
+        XCTAssertTrue(settings.liveDictationEnabled)
+        settings.liveDictationEnabled = false
+        XCTAssertFalse(settings.liveDictationEnabled)
+    }
+}
+
 // MARK: - State Machine Tests
 
 final class DictationStateTests: XCTestCase {
