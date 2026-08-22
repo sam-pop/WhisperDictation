@@ -481,10 +481,14 @@ final class DictationEngine {
             liveContinuation = continuation
             liveSessionFlag = sessionFlag
 
-            segmenter.onChunk = { [weak self] chunk in
-                // Main queue (VADSegmenter contract) — continuation is safe here.
-                self?.liveContinuation?.yield(.chunk(chunk))
-            }
+            // Invoked synchronously on the segmenter's queue, so it must touch
+            // NO main-actor state: the continuation is captured by value, never
+            // read back through `self.liveContinuation`. `yield` is thread-safe
+            // and non-blocking, and the stop path's `finishAndCollectResidual()`
+            // barrier happens-after every commit's yield — so every committed
+            // chunk is in the stream before the residual and `finish()`, and none
+            // can be orphaned by the stop path clearing `liveContinuation`.
+            segmenter.onChunk = { chunk in continuation.yield(.chunk(chunk)) }
             audioCapture.onSamples = { samples in segmenter.append(samples) }
             segmenter.start()
             runLiveConsumer(stream: stream, bridge: bridge, sessionFlag: sessionFlag)

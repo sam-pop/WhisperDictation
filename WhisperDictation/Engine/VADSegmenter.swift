@@ -59,9 +59,14 @@ struct VADChunkGate {
 
 /// Streams mic samples through whisper.cpp's Silero VAD and emits whole
 /// utterance chunks on speech pauses. All VAD C calls and mutable state live
-/// on `queue`; `onChunk` is delivered async on the main queue (NEVER
-/// synchronously — the engine's stop path sync-barriers on `queue`, and a
-/// main.sync from inside it would deadlock).
+/// on `queue`, and `onChunk` is invoked synchronously on that same serial
+/// queue at the commit site. The handler must therefore be thread-safe, must
+/// not touch main-actor state, and must NEVER `DispatchQueue.main.sync` (the
+/// engine's stop path sync-barriers on `queue` from the main thread, so a
+/// main.sync from inside a commit would deadlock). Synchronous delivery is
+/// what makes the stop barrier a happens-after point for every committed
+/// chunk: nothing can still be in flight when `finishAndCollectResidual()`
+/// returns.
 final class VADSegmenter {
     private let queue = DispatchQueue(label: "com.whisperdictation.vad", qos: .userInitiated)
     private let vadContext: OpaquePointer
@@ -70,7 +75,11 @@ final class VADSegmenter {
     private var chunkProbs: [Float] = []
     private var gate = VADChunkGate()
 
-    /// Whole utterance chunk (16 kHz mono Float32), async on the main queue.
+    /// Whole utterance chunk (16 kHz mono Float32), delivered synchronously on
+    /// the segmenter's own serial queue — see the class comment for the rules
+    /// the handler must follow (thread-safe, no main-actor state, no main.sync).
+    /// Set once before `start()` and never reassigned mid-session (unsynchronized
+    /// by design, per repo convention).
     var onChunk: (([Float]) -> Void)?
 
     init(vadModelPath: String) throws {
@@ -186,9 +195,7 @@ final class VADSegmenter {
                 chunkSamples.removeFirst(min(endSample, chunkSamples.count))
                 chunkProbs.removeAll()
                 whisper_vad_reset_state(vadContext)
-                if let onChunk = onChunk {
-                    DispatchQueue.main.async { onChunk(chunk) }
-                }
+                onChunk?(chunk)
                 // Carried windows re-enter the fresh gate ahead of any
                 // remaining unprocessed probabilities from this call.
                 replay = carriedProbs + replay
