@@ -18,6 +18,7 @@ SWIFT_FILES := \
 	WhisperDictation/Engine/SoundFeedback.swift \
 	WhisperDictation/Engine/ModelManager.swift \
 	WhisperDictation/Engine/TextCorrector.swift \
+	WhisperDictation/Engine/VADSegmenter.swift \
 	WhisperDictation/Utilities/HotkeyMonitor.swift \
 	WhisperDictation/Utilities/PermissionManager.swift \
 	WhisperDictation/Utilities/LaunchAtLoginHelper.swift \
