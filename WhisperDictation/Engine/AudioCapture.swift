@@ -14,6 +14,12 @@ final class AudioCapture {
     /// the audio tap thread — the handler must hop to the main actor. The engine
     /// should treat this exactly like the user stopping (transcribe what was captured).
     var onMaxDurationReached: (() -> Void)?
+
+    /// Optional live-mode hook: each converted 16 kHz mono Float32 batch,
+    /// invoked on the tap thread. The receiver must hop off this thread
+    /// immediately (VADSegmenter.append does). Cleared by the engine when a
+    /// live session ends.
+    var onSamples: (([Float]) -> Void)?
     private var configObserver: NSObjectProtocol?
 
     private static let sampleRate: Double = 16000
@@ -116,6 +122,7 @@ final class AudioCapture {
                 self.audioBuffer.append(contentsOf: samples)
                 let crossedCap = Self.crossesDurationCap(previousCount: previousCount, newCount: self.audioBuffer.count)
                 self.bufferLock.unlock()
+                self.onSamples?(samples)
                 #if DEBUG
                 fputs("+", stderr) // successful conversion (DEBUG only)
                 #endif

@@ -142,6 +142,7 @@ final class DictationEngine {
     /// busy, perform it now. Main-actor only.
     private func returnToIdle() {
         state = .idle
+        drainCancelFlag = nil
         if pendingModelReload { performModelReload() }
     }
 
@@ -219,9 +220,19 @@ final class DictationEngine {
     /// Ask the active bridge to abort the running decode. The `transcribe` call then
     /// throws `WhisperError.cancelled`, which the transcription task treats as a silent
     /// reset to idle (no error surfaced). Already-typed segments remain.
+    ///
+    /// A live session draining after stop cancels differently: it flips its own shared
+    /// session flag, which every queued chunk decode polls. `bridge.cancelTranscription()`
+    /// would be wrong there — its single-flight `activeCancelFlag` is overwritten as each
+    /// queued call enters and cleared as each finishes, so it can target the wrong decode
+    /// (or none at all).
     private func cancelTranscription() {
         fputs("[DictationEngine] Cancel requested during \(state.rawValue).\n", stderr)
-        whisperBridge?.cancelTranscription()
+        if let liveFlagForDrain = drainCancelFlag {
+            liveFlagForDrain.cancel()
+        } else {
+            whisperBridge?.cancelTranscription()
+        }
     }
 
     private func handleKeyUp() {
@@ -314,10 +325,14 @@ final class DictationEngine {
         recordingStartTime = Date()
         soundFeedback.playStartSound()
 
+        let live = startLiveSessionIfEnabled()
+        fputs("[DictationEngine] Recording (live: \(live))\n", stderr)
+
         do {
             try audioCapture.startRecording()
         } catch {
             fputs("[DictationEngine] Failed to start recording: \(error)\n", stderr)
+            teardownLiveSession()
             state = .idle
         }
     }
@@ -328,6 +343,10 @@ final class DictationEngine {
     ///   Push-to-talk passes 0.
     private func stopRecordingAndTranscribe(trimTrailingSeconds: TimeInterval = 0) {
         guard state == .recording else { return }
+        if isLiveSession {
+            stopLiveSession(trimTrailingSeconds: trimTrailingSeconds)
+            return
+        }
 
         let audioBuffer = audioCapture.stopRecording(trimTrailingSeconds: trimTrailingSeconds)
         soundFeedback.playStopSound()
@@ -409,6 +428,198 @@ final class DictationEngine {
         }
     }
 
+    // MARK: - Live Dictation Session
+
+    private enum LiveWorkItem {
+        case chunk([Float])
+        case residual([Float])
+    }
+
+    /// Residual minimum is SAMPLE COUNT (≈0.3 s @16 kHz) — the wall-clock
+    /// minRecordingDuration check measures the whole session and would always
+    /// pass after a live session. Distinct from VADChunkGate.minSpeechWindows,
+    /// which gates chunks by accumulated speech, not raw length.
+    static let residualMinSeconds = 0.3
+    static func residualMeetsMinimum(sampleCount: Int) -> Bool {
+        Double(sampleCount) >= 16000 * residualMinSeconds
+    }
+
+    /// Stop-time termination (append-only): a session whose committed text
+    /// never ended a sentence gets exactly one period at stop. Chunks are
+    /// never auto-terminated (a "final chunk" is unknowable at commit time —
+    /// toggle mode's hold-to-stop guarantees the last utterance commits as an
+    /// intermediate chunk).
+    static func needsTerminalPeriod(committed: String) -> Bool {
+        guard let last = committed.last else { return false }
+        return !".!?".contains(last)
+    }
+
+    private var liveSegmenter: VADSegmenter?
+    private var liveContinuation: AsyncStream<LiveWorkItem>.Continuation?
+    private var liveSessionFlag: CancellationFlag?
+
+    /// The session flag kept alive for the drain phase (stop → consumer finish),
+    /// after the main-actor session references are cleared. This is what a cancel
+    /// during .processing/.typing flips. Cleared in `returnToIdle()`.
+    private var drainCancelFlag: CancellationFlag?
+
+    private var isLiveSession: Bool { liveSegmenter != nil }
+
+    /// Engine-side guard (evaluated per session): the setting stores intent;
+    /// live runs only when the VAD model is actually on disk, resolved fresh
+    /// (WhisperBridge's cached copy from its own init must not be reused).
+    private func startLiveSessionIfEnabled() -> Bool {
+        guard AppSettings.shared.liveDictationEnabled,
+              let vadPath = ModelManager.shared.vadModelPath(),
+              let bridge = whisperBridge else { return false }
+        do {
+            let segmenter = try VADSegmenter(vadModelPath: vadPath)
+            let sessionFlag = CancellationFlag()
+            let (stream, continuation) = AsyncStream.makeStream(of: LiveWorkItem.self)
+
+            liveSegmenter = segmenter
+            liveContinuation = continuation
+            liveSessionFlag = sessionFlag
+
+            segmenter.onChunk = { [weak self] chunk in
+                // Main queue (VADSegmenter contract) — continuation is safe here.
+                self?.liveContinuation?.yield(.chunk(chunk))
+            }
+            audioCapture.onSamples = { samples in segmenter.append(samples) }
+            segmenter.start()
+            runLiveConsumer(stream: stream, bridge: bridge, sessionFlag: sessionFlag)
+            return true
+        } catch {
+            fputs("[DictationEngine] VAD init failed — falling back to non-live: \(error)\n", stderr)
+            return false
+        }
+    }
+
+    /// ONE sequential consumer: strict output order and a natural drain point
+    /// fall out of the single loop (per-chunk Tasks would guarantee neither).
+    /// Owns the whole post-stream finish: terminal period, flush, done sound,
+    /// lastTranscription, returnToIdle — unconditionally, even when the
+    /// residual was empty (the common case; the non-live empty shortcut must
+    /// never be taken here or queued typing gets stranded).
+    private func runLiveConsumer(
+        stream: AsyncStream<LiveWorkItem>,
+        bridge: WhisperBridge,
+        sessionFlag: CancellationFlag
+    ) {
+        let injector = self.textInjector
+        let feedback = self.soundFeedback
+        let collected = TranscriptCollector()
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var surfacedError: String?
+
+            for await item in stream {
+                if sessionFlag.isCancelled && surfacedError == nil {
+                    continue   // user cancel during drain: skip remaining work silently
+                }
+                let (samples, isResidual): ([Float], Bool)
+                switch item {
+                case .chunk(let s): (samples, isResidual) = (s, false)
+                case .residual(let s): (samples, isResidual) = (s, true)
+                }
+                guard surfacedError == nil else { continue }  // failure: drain and discard
+
+                let prompt = Self.buildPrompt(
+                    base: AppSettings.shared.vocabularyPrompt,
+                    customTerms: AppSettings.shared.customTerms,
+                    transcriptTail: collected.text
+                )
+                do {
+                    _ = try await bridge.transcribe(
+                        audioBuffer: samples,
+                        prompt: prompt,
+                        cancelFlag: sessionFlag,
+                        vad: isResidual   // chunks are pre-trimmed; residual is raw
+                    ) { segment in
+                        let context = CorrectionContext(
+                            atSentenceStart: collected.atSentenceStart,
+                            appendPeriod: false   // termination is the stop-time rule
+                        )
+                        let corrected = TextCorrector.shared.correct(segment, context: context)
+                        guard !corrected.isEmpty else { return }
+                        injector.type(text: collected.joinAndAppend(corrected))
+                    }
+                } catch let error as WhisperError where error.isCancellation {
+                    continue   // silent: user cancel, or cascade after a failure
+                } catch {
+                    fputs("[DictationEngine] Live decode failed: \(error)\n", stderr)
+                    surfacedError = error.localizedDescription
+                    sessionFlag.cancel()   // abort the queue; cascade drains silently above
+                }
+            }
+
+            // Stream closed: stop-time finish (unconditional drain + flush).
+            if surfacedError == nil, Self.needsTerminalPeriod(committed: collected.text) {
+                injector.type(text: ".")
+            }
+            injector.flush()
+
+            let finalError = surfacedError
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if let finalError {
+                    self.transcriptionError = finalError
+                } else if !collected.text.isEmpty {
+                    var transcript = collected.text
+                    if Self.needsTerminalPeriod(committed: transcript) { transcript += "." }
+                    self.lastTranscription = transcript
+                    self.transcriptionError = nil
+                }
+                feedback.playDoneSound()
+                self.returnToIdle()
+            }
+        }
+    }
+
+    /// Live stop: discard the full capture buffer (its speech was already
+    /// committed chunk-by-chunk), collect the segmenter's residual, and close
+    /// the stream — the consumer owns everything after this point, including
+    /// returnToIdle. State moves to .processing/.typing to cover the drain.
+    private func stopLiveSession(trimTrailingSeconds: TimeInterval) {
+        audioCapture.onSamples = nil
+        _ = audioCapture.stopRecording()   // tap removed; buffer intentionally discarded
+        soundFeedback.playStopSound()
+        recordingStartTime = nil
+
+        var residual = liveSegmenter?.finishAndCollectResidual() ?? []
+        if trimTrailingSeconds > 0 {
+            let toTrim = Int(trimTrailingSeconds * 16000)
+            residual = residual.count > toTrim ? Array(residual.dropLast(toTrim)) : []
+        }
+
+        state = .processing
+        if Self.residualMeetsMinimum(sampleCount: residual.count) {
+            state = .typing
+            liveContinuation?.yield(.residual(residual))
+        }
+        liveContinuation?.finish()   // consumer drains, flushes, returns to idle
+        drainCancelFlag = liveSessionFlag
+        clearLiveSessionReferences()
+    }
+
+    /// Drop main-actor references to the session. The consumer task holds its
+    /// own copies (stream, flag, collector) and finishes independently.
+    private func clearLiveSessionReferences() {
+        liveSegmenter = nil
+        liveContinuation = nil
+        liveSessionFlag = nil
+    }
+
+    /// Full teardown for paths where the consumer must ALSO stop (start
+    /// failure, config change): close the stream so the consumer's finish
+    /// block runs, then clear references.
+    private func teardownLiveSession() {
+        audioCapture.onSamples = nil
+        _ = liveSegmenter?.finishAndCollectResidual()   // discard residual
+        liveContinuation?.finish()
+        clearLiveSessionReferences()
+    }
+
     /// Invoked (on the audio tap thread) when a recording reaches the maximum
     /// duration cap. Route it through the normal stop-and-transcribe path on the main
     /// actor so what was captured is still transcribed, and surface a brief,
@@ -432,6 +643,17 @@ final class DictationEngine {
     private func handleInputConfigurationChange() {
         Task { @MainActor [weak self] in
             guard let self, self.state == .recording else { return }
+            if self.isLiveSession {
+                fputs("[DictationEngine] Audio input changed during live session — stopping.\n", stderr)
+                self.audioCapture.onSamples = nil
+                _ = self.audioCapture.stopRecording()
+                self.soundFeedback.playStopSound()
+                self.recordingStartTime = nil
+                self.state = .processing        // consumer's finish returns to idle
+                self.teardownLiveSession()      // residual discarded; committed text remains
+                self.transcriptionError = "Audio input changed. Recording stopped."
+                return
+            }
             fputs("[DictationEngine] Audio input configuration changed during recording — stopping.\n", stderr)
             _ = self.audioCapture.stopRecording()
             self.soundFeedback.playStopSound()
