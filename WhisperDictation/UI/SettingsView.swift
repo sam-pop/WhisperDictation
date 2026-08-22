@@ -98,7 +98,7 @@ struct SettingsView: View {
 
                 switch selectedSection {
                 case .general:
-                    GeneralSection(settings: settings, engine: engine, colorScheme: colorScheme)
+                    GeneralSection(settings: settings, modelManager: modelManager, engine: engine, colorScheme: colorScheme)
                 case .model:
                     ModelSection(settings: settings, modelManager: modelManager, engine: engine, colorScheme: colorScheme)
                 case .vocabulary:
@@ -206,6 +206,7 @@ private struct CardHeader: View {
 
 private struct GeneralSection: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var modelManager: ModelManager
     @ObservedObject var audioDevices: AudioDeviceManager = .shared
     let engine: DictationEngine
     let colorScheme: ColorScheme
@@ -283,6 +284,30 @@ private struct GeneralSection: View {
                     .font(.system(size: 13))
                 Toggle("Sound feedback", isOn: $settings.soundFeedbackEnabled)
                     .font(.system(size: 13))
+
+                // Live dictation (experimental): commit-on-pause phrase typing.
+                // The toggle stores intent immediately; enabling without the
+                // voice-activity model also kicks off its download. The engine
+                // keeps the feature inert until that model is on disk.
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Live dictation", isOn: Binding(
+                        get: { settings.liveDictationEnabled },
+                        set: { enabled in
+                            settings.liveDictationEnabled = enabled
+                            if enabled
+                                && !modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+                                && !modelManager.isDownloading(.vadSilero) {
+                                modelManager.startDownload(.vadSilero)
+                            }
+                        }
+                    ))
+                    .font(.system(size: 13))
+                    Text(liveDictationCaption)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)
                     .font(.system(size: 13))
                     .onChange(of: settings.launchAtLogin) { _, newValue in
@@ -290,6 +315,25 @@ private struct GeneralSection: View {
                     }
             }
         }
+    }
+
+    /// State-aware explainer under the live dictation toggle: what the feature
+    /// does when off, and — when on — whether the voice-activity model it needs
+    /// is ready, downloading, failed, or missing.
+    private var liveDictationCaption: String {
+        guard settings.liveDictationEnabled else {
+            return "Types each phrase when you pause, instead of everything at the end. Works best with small or base models."
+        }
+        if modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero) {
+            return "Types each phrase when you pause. Works best with small or base models."
+        }
+        if modelManager.isDownloading(.vadSilero) {
+            return "Downloading the voice-activity model — live dictation starts working when it finishes."
+        }
+        if modelManager.downloadError != nil {
+            return "A model download failed — retry from the Models section. Live dictation stays off until the voice-activity model is downloaded."
+        }
+        return "Requires the voice-activity model (Models section). Live dictation is off until it's downloaded."
     }
 }
 
