@@ -439,6 +439,13 @@ final class DictationEngine {
 final class TranscriptCollector: @unchecked Sendable {
     private(set) var text: String = ""
 
+    /// True when the next appended segment begins a sentence: nothing has
+    /// been collected yet, or the collected text ends in terminal punctuation.
+    var atSentenceStart: Bool {
+        guard let last = text.last else { return true }
+        return ".!?".contains(last)
+    }
+
     /// Returns `segment` as it should be typed — with a leading space when
     /// joining onto already-collected text — and appends that same piece to
     /// `text`, so the typed stream and the collected transcript cannot drift.
