@@ -25,6 +25,7 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         case numberConversionEnabled
         case customTerms
         case hasCompletedOnboarding
+        case liveDictationEnabled
     }
 
     // MARK: - Properties
@@ -112,6 +113,14 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
     var numberConversionEnabled: Bool {
         get { defaults.object(forKey: Key.numberConversionEnabled.rawValue) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.numberConversionEnabled.rawValue); objectWillChange.send() }
+    }
+
+    /// Live dictation (commit-on-pause): type each phrase when the speaker
+    /// pauses instead of everything at stop. Default false. Stores intent —
+    /// the engine additionally requires the VAD model on disk per session.
+    var liveDictationEnabled: Bool {
+        get { defaults.bool(forKey: Key.liveDictationEnabled.rawValue) }
+        set { defaults.set(newValue, forKey: Key.liveDictationEnabled.rawValue); objectWillChange.send() }
     }
 
     /// Maximum number of custom vocabulary terms. Mirrors the UI cap; enforced here
