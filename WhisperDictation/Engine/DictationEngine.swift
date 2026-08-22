@@ -278,19 +278,30 @@ final class DictationEngine {
     /// user's custom terms, staying within `promptWordBudget` words. The base prompt
     /// is truncated first if it alone exceeds the budget; custom terms then fill any
     /// remaining word budget. Pure/static so it is unit-testable without the engine.
-    static func buildPrompt(base: String, customTerms: [String]) -> String {
+    ///
+    /// - Parameter transcriptTail: text already committed in this dictation, used by
+    ///   live mode so each chunk decodes with the preceding words as context. Empty
+    ///   (the default) leaves the prompt byte-identical to the non-live build.
+    static func buildPrompt(base: String, customTerms: [String], transcriptTail: String = "") -> String {
         let baseWords = base.split(separator: " ")
         let cappedBase = baseWords.count > promptWordBudget
             ? baseWords.prefix(promptWordBudget).joined(separator: " ")
             : base
 
-        guard !customTerms.isEmpty else { return cappedBase }
-
-        let budget = max(0, promptWordBudget - baseWords.count)
-        let termsToAdd = Array(customTerms.prefix(budget))
-        return termsToAdd.isEmpty
+        let termBudget = max(0, promptWordBudget - baseWords.count)
+        let termsToAdd = Array(customTerms.prefix(termBudget))
+        let withTerms = termsToAdd.isEmpty
             ? cappedBase
             : cappedBase + ", " + termsToAdd.joined(separator: ", ")
+
+        // Committed-transcript tail: budgeted by ACTUAL word count (terms above
+        // deliberately keep their historical one-unit-each accounting), capped
+        // at 50 words, appended last — closest to the decode.
+        let tailWords = transcriptTail.split(separator: " ")
+        let usedWords = min(baseWords.count, promptWordBudget) + termsToAdd.count
+        let tailBudget = min(50, max(0, promptWordBudget - usedWords))
+        guard tailBudget > 0, !tailWords.isEmpty else { return withTerms }
+        return withTerms + " " + tailWords.suffix(tailBudget).joined(separator: " ")
     }
 
     // MARK: - Recording Flow
