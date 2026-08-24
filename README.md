@@ -37,6 +37,7 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 ## Features
 
 - **Push-to-talk OR toggle mode** -- hold a hotkey and release, OR press once to start and once to stop. Toggle mode is **carpal-tunnel friendly** for long dictations and anyone with RSI; it requires a configurable hold (default 1.5s) to prevent accidental activation.
+- **Live dictation (optional)** -- commit-on-pause streaming: each phrase is typed about half a second after you pause, while you keep speaking. Already-typed text is never revised -- no backspacing into terminals or send-on-enter chat boxes. Off by default; requires the Silero VAD model (2 MB).
 - **Works in any app** -- Terminal, VS Code, Claude Code, Xcode, Slack, browsers, email -- anywhere you can type
 - **Fast** -- sub-second transcription on Apple Silicon (Metal GPU). Optimized CPU path for Intel Macs.
 - **100% private** -- all audio processing happens locally. Nothing is sent to any server, ever.
@@ -133,6 +134,10 @@ Once both permissions are granted, you'll see a green "Ready" status in the menu
 | 3 | Speak naturally |
 | 4 | **Release the key** -- text appears at your cursor |
 
+### Live Dictation
+
+Prefer to see words while you're still talking? Turn on **Settings > General > Live dictation**. Each phrase is typed about half a second after you pause -- no waiting for release. Already-typed text is never revised, so it's safe in terminals and send-on-enter chat boxes. Requires the Silero VAD model (2 MB); flipping the toggle downloads it automatically.
+
 ### Menu Bar States
 
 | Icon | State | Meaning |
@@ -146,7 +151,7 @@ Once both permissions are granted, you'll see a green "Ready" status in the menu
 
 Click the menu bar icon > Settings to configure:
 
-- **General** -- hotkey binding, grammar correction toggle, sound feedback, launch at login
+- **General** -- hotkey binding, live dictation, grammar correction toggle, sound feedback, launch at login
 - **Model** -- download and switch between Whisper models
 - **Vocabulary** -- customize the developer vocabulary prompt for better recognition
 - **Permissions** -- check and manage macOS permissions
@@ -174,6 +179,8 @@ Quantized models are 2-3x smaller and faster than full precision with near-ident
 ### Voice Activity Detection (VAD)
 
 Download the Silero VAD model (2 MB) to automatically trim silence from recordings before inference. This significantly speeds up transcription, especially for short push-to-talk clips with silence at the start/end.
+
+The VAD model also powers **Live dictation** -- the toggle stays off until this model is on disk (enabling it in Settings starts the download automatically).
 
 *Speed measured for a 5-second audio clip on Apple Silicon with Metal GPU. Intel Macs use CPU-only and will be 2-3x slower.
 
@@ -239,6 +246,7 @@ HotkeyMonitor (CGEvent tap -- global push-to-talk key detection)
        |
 DictationEngine (@Observable state machine)
   |-- AudioCapture      AVAudioEngine -> 16kHz mono Float32 buffer
+  |-- VADSegmenter      Silero VAD commit-on-pause chunking (live dictation)
   |-- WhisperBridge     C bridging header -> whisper_full() with beam search
   |-- TextCorrector     Rule-based grammar, casing, punctuation (<5ms)
   |-- TextInjector      CGEvent keyboardSetUnicodeString (works in any app)
@@ -280,6 +288,7 @@ WhisperDictation/
   Engine/
     AudioCapture.swift         AVAudioEngine mic recording + resampling
     WhisperBridge.swift        Swift wrapper for whisper.cpp C API
+    VADSegmenter.swift         Silero VAD chunking for live dictation
     TextCorrector.swift        Rule-based grammar/casing/punctuation
     TextInjector.swift         CGEvent text typing at cursor
     DictationEngine.swift      State machine orchestrating everything
