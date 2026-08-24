@@ -371,7 +371,7 @@
         .features-section { background: var(--cream-dark); }
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 2px;
             background: rgba(26,26,46,0.04);
             border-radius: 16px;
@@ -711,9 +711,10 @@
         }
         .footer-copy a { color: rgba(250, 247, 242, 0.35); text-decoration: none; }
 
-        /* Tablet — 4-col feature grid wraps cleanly to 2 cols */
+        /* Tablet — 3-col feature grid wraps to 2 cols; last of 9 cells spans the row */
         @media (max-width: 1024px) {
             .feature-grid { grid-template-columns: repeat(2, 1fr); }
+            .feature-cell:last-child { grid-column: 1 / -1; }
         }
 
         /* Mobile */
@@ -835,6 +836,11 @@
                 <div class="feature-dot" style="background: var(--green);"></div>
                 <h3>Blink and you'll miss it</h3>
                 <p>Metal GPU on Apple Silicon. Sub-second transcription. VAD trims the silence so Whisper only crunches the good bits.</p>
+            </div>
+            <div class="feature-cell">
+                <div class="feature-dot" style="background: #0ea5e9;"></div>
+                <h3>Words while you're still talking</h3>
+                <p>Optional live dictation types each phrase the moment you pause &mdash; no waiting for release. It never rewrites what it already typed, so terminals and chat boxes stay safe.</p>
             </div>
             <div class="feature-cell">
                 <div class="feature-dot" style="background: var(--blue);"></div>
