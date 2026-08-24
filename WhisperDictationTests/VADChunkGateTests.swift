@@ -11,7 +11,7 @@ final class VADChunkGateTests: XCTestCase {
 
     func testConstantsMatchSpecTimings() {
         // 512 samples @16 kHz = 32 ms per window.
-        XCTAssertEqual(Double(VADChunkGate.pauseWindows) * 0.032, 0.704, accuracy: 0.033)      // ~0.7 s
+        XCTAssertEqual(Double(VADChunkGate.pauseWindows) * 0.032, 0.448, accuracy: 0.033)      // ~0.45 s
         XCTAssertEqual(Double(VADChunkGate.minSpeechWindows) * 0.032, 0.32, accuracy: 0.033)   // ~0.3 s
         XCTAssertEqual(Double(VADChunkGate.ceilingWindows) * 0.032, 25.0, accuracy: 0.05)      // ~25 s
     }
