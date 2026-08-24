@@ -10,8 +10,9 @@ struct VADChunkGate {
     /// pinned to ggml-silero-v5.1.2.bin — revisit on VAD model bumps.
     static let windowSamples = 512
     static let speechThreshold: Float = 0.5
-    /// ~0.7 s of consecutive silence after speech commits a boundary.
-    static let pauseWindows = 22
+    /// ~0.45 s of consecutive silence after speech commits a boundary.
+    /// (Was ~0.7 s; shortened per user feedback so phrases land sooner.)
+    static let pauseWindows = 14
     /// Chunks with under ~0.3 s of speech are dropped, never transcribed.
     static let minSpeechWindows = 10
     /// Force a boundary before Whisper's 30 s hard window: ~25 s.
