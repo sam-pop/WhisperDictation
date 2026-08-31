@@ -629,24 +629,24 @@ final class DictationEngine {
     }
 
     /// App is terminating (main thread; exit() follows, skipping all deinits).
-    /// Stop capture, cancel and drain both whisper queues, and drop the last
-    /// references so the contexts are freed (whisper_free / whisper_vad_free)
-    /// before ggml's at-exit Metal assert. The idle-quit case — the one that
-    /// crashed — is fully deterministic here: the engine holds the only
-    /// references, so release frees synchronously. If a decode Task is still
-    /// in flight it holds its own bridge reference; the cancel flags make it
-    /// finish quickly and free off-main, best effort.
+    /// Stop capture, tear down any live session, and free the whisper context
+    /// explicitly via `shutdownAndFree()` — ggml's at-exit Metal assert fires if
+    /// it is still alive, and refcounted deinit cannot be relied on here: a
+    /// live-session consumer task holds its own bridge reference and finishes
+    /// on the main actor, which is blocked in this very handler. The segmenter's
+    /// VAD context is CPU-only (not implicated in the Metal assert); its release
+    /// through teardown stays best-effort.
     private func prepareForTermination() {
-        fputs("[DictationEngine] Terminating — freeing whisper contexts\n", stderr)
+        fputs("[DictationEngine] Terminating — freeing whisper context\n", stderr)
         audioCapture.onSamples = nil
         if audioCapture.isRecording { _ = audioCapture.stopRecording() }
         // Cancel BEFORE the teardown drain so chunks committed during the drain
         // abort instead of starting fresh decodes (same rule as teardownLiveSession).
         liveSessionFlag?.cancel()
         teardownLiveSession()
-        whisperBridge?.drainForShutdown()
+        whisperBridge?.shutdownAndFree()
         whisperBridge = nil
-        fputs("[DictationEngine] Whisper contexts released\n", stderr)
+        fputs("[DictationEngine] Whisper context freed\n", stderr)
     }
 
     /// Full teardown for paths where the consumer must ALSO stop (start
