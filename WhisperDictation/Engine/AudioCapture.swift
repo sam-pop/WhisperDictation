@@ -34,6 +34,21 @@ final class AudioCapture {
     static func crossesDurationCap(previousCount: Int, newCount: Int) -> Bool {
         previousCount < maxRecordingSamples && newCount >= maxRecordingSamples
     }
+
+    /// AVAudioEngine posts a configuration-change notification once right after
+    /// start() when the AUHAL renegotiates a stale format (observed after another
+    /// app switches the device's sample rate). In that case the engine keeps
+    /// running and the tap keeps delivering at its installed format, so the
+    /// session must continue. A real input change (device unplugged, rate or
+    /// channel flip mid-session) stops the engine or invalidates the tap format
+    /// and must end the session. Pure/static for unit testing without hardware.
+    static func isBenignConfigurationChange(
+        isRunning: Bool,
+        tapRate: Double, tapChannels: UInt32,
+        hwRate: Double, hwChannels: UInt32
+    ) -> Bool {
+        isRunning && hwRate == tapRate && hwChannels == tapChannels && hwRate > 0 && hwChannels > 0
+    }
     private static let desiredFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: sampleRate,
@@ -54,7 +69,12 @@ final class AudioCapture {
         // prepare() FIRST — settles the audio hardware format
         engine.prepare()
 
-        let hwFormat = inputNode.outputFormat(forBus: 0)
+        // Must be inputFormat (the hardware capture format), NOT outputFormat: after
+        // an external sample-rate change (e.g. a conferencing app switching the mic to
+        // 16 kHz), outputFormat keeps vending the stale rate while installTap validates
+        // the tap format against the real hardware rate and throws NSException on
+        // mismatch — an uncaught crash, since ObjC exceptions can't be caught in Swift.
+        let hwFormat = inputNode.inputFormat(forBus: 0)
         fputs("[AudioCapture] Hardware format: \(hwFormat.sampleRate)Hz \(hwFormat.channelCount)ch\n", stderr)
 
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
@@ -142,9 +162,19 @@ final class AudioCapture {
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
             queue: nil
-        ) { [weak self] _ in
+        ) { [weak self, weak engine] _ in
+            guard let self else { return }
+            let hw = engine?.inputNode.inputFormat(forBus: 0)
+            if Self.isBenignConfigurationChange(
+                isRunning: engine?.isRunning ?? false,
+                tapRate: hwFormat.sampleRate, tapChannels: hwFormat.channelCount,
+                hwRate: hw?.sampleRate ?? 0, hwChannels: hw?.channelCount ?? 0
+            ) {
+                fputs("[AudioCapture] Engine configuration changed (benign renegotiation) — continuing\n", stderr)
+                return
+            }
             fputs("[AudioCapture] Engine configuration changed\n", stderr)
-            self?.onConfigurationChange?()
+            self.onConfigurationChange?()
         }
 
         try engine.start()

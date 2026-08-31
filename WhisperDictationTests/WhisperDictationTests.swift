@@ -725,6 +725,41 @@ final class AudioCaptureDurationCapTests: XCTestCase {
     }
 }
 
+final class AudioCaptureConfigChangeTests: XCTestCase {
+    // AVAudioEngine posts a configuration-change notification once right after
+    // start() when the AUHAL renegotiates a stale format (seen when another app
+    // switched the device's sample rate). That renegotiation is benign — the
+    // engine keeps running and the tap keeps delivering at the format it was
+    // installed with — and must NOT end the session.
+    func testRenegotiationWithMatchingFormatIsBenign() {
+        XCTAssertTrue(AudioCapture.isBenignConfigurationChange(
+            isRunning: true, tapRate: 16000, tapChannels: 2, hwRate: 16000, hwChannels: 2))
+    }
+
+    func testEngineStoppedIsFatal() {
+        // Device unplugged: the engine stops itself.
+        XCTAssertFalse(AudioCapture.isBenignConfigurationChange(
+            isRunning: false, tapRate: 16000, tapChannels: 2, hwRate: 16000, hwChannels: 2))
+    }
+
+    func testSampleRateChangeIsFatal() {
+        // Mid-session rate flip (e.g. conferencing app): tap format no longer valid.
+        XCTAssertFalse(AudioCapture.isBenignConfigurationChange(
+            isRunning: true, tapRate: 16000, tapChannels: 2, hwRate: 48000, hwChannels: 2))
+    }
+
+    func testChannelCountChangeIsFatal() {
+        XCTAssertFalse(AudioCapture.isBenignConfigurationChange(
+            isRunning: true, tapRate: 16000, tapChannels: 2, hwRate: 16000, hwChannels: 1))
+    }
+
+    func testZeroedFormatIsFatal() {
+        // Device gone entirely — format reads back as 0 Hz / 0 ch.
+        XCTAssertFalse(AudioCapture.isBenignConfigurationChange(
+            isRunning: true, tapRate: 16000, tapChannels: 2, hwRate: 0, hwChannels: 0))
+    }
+}
+
 // MARK: - Onboarding Tests
 
 final class OnboardingTests: XCTestCase {
