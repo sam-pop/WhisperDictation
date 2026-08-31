@@ -168,6 +168,17 @@ final class WhisperBridge: @unchecked Sendable {
         flag?.cancel()
     }
 
+    /// Cancel any in-flight decode and block until the serial queue is drained, so
+    /// the caller can release the bridge and have deinit run `whisper_free` before
+    /// process exit. Needed because NSApplication's terminate path calls exit()
+    /// without running Swift deinits, and ggml's Metal teardown asserts at exit
+    /// (ggml_metal_rsets_free) if any context's Metal resources are still alive.
+    /// Called on the main thread during app termination.
+    func drainForShutdown() {
+        cancelTranscription()
+        queue.sync {}
+    }
+
     // Synchronous lock helpers. Kept out of the async `transcribe` body so the NSLock
     // is never taken across a suspension point (which the compiler forbids).
     private func setActiveCancelFlag(_ flag: CancellationFlag) {
