@@ -54,6 +54,12 @@ final class WhisperBridge: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.whisperdictation.whisper", qos: .userInitiated)
     private let vadModelPath: String?
 
+    /// True once `shutdownAndFree()` has freed `context`. Written and read only on
+    /// `queue` (the same serialization that protects every context access), except
+    /// in deinit, where no other references — and hence no concurrent queue work
+    /// started after the free — can exist.
+    private var freed = false
+
     /// The cancellation flag for the currently in-flight `transcribe`, if any. Guarded
     /// by `cancelLock`. Set when `transcribe` is entered (so a cancel arriving during
     /// the multi-second decode reaches it) and cleared when that decode finishes.
@@ -86,7 +92,7 @@ final class WhisperBridge: @unchecked Sendable {
     }
 
     deinit {
-        whisper_free(context)
+        if !freed { whisper_free(context) }
     }
 
     // MARK: - GPU Pre-warming
@@ -98,6 +104,10 @@ final class WhisperBridge: @unchecked Sendable {
     func warmup() async {
         await withCheckedContinuation { continuation in
             queue.async {
+                guard !self.freed else {
+                    continuation.resume()
+                    return
+                }
                 let silence = [Float](repeating: 0, count: 8000) // 0.5s of silence
                 var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
                 params.n_threads = 1
@@ -147,6 +157,12 @@ final class WhisperBridge: @unchecked Sendable {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             queue.async {
                 defer { self.clearActiveCancelFlag(ifCurrent: cancelFlag) }
+                guard !self.freed else {
+                    // Context freed during app termination: surface as the benign
+                    // cancel path every caller already handles.
+                    continuation.resume(throwing: WhisperError.cancelled)
+                    return
+                }
                 do {
                     let result = try self.runInference(audioBuffer: audioBuffer, prompt: prompt, vadEnabled: vad, onSegment: onSegment, cancelFlag: cancelFlag)
                     continuation.resume(returning: result)
@@ -168,15 +184,24 @@ final class WhisperBridge: @unchecked Sendable {
         flag?.cancel()
     }
 
-    /// Cancel any in-flight decode and block until the serial queue is drained, so
-    /// the caller can release the bridge and have deinit run `whisper_free` before
-    /// process exit. Needed because NSApplication's terminate path calls exit()
-    /// without running Swift deinits, and ggml's Metal teardown asserts at exit
-    /// (ggml_metal_rsets_free) if any context's Metal resources are still alive.
-    /// Called on the main thread during app termination.
-    func drainForShutdown() {
+    /// Cancel any in-flight decode, then free the whisper context on the serial
+    /// queue — deterministically, regardless of who still holds references to the
+    /// bridge (a live-session consumer task keeps one across the whole session, so
+    /// waiting for refcounted deinit is not an option at exit, and blocking on the
+    /// consumer would deadlock: it finishes on the main actor). Needed because
+    /// NSApplication's terminate path calls exit() without running Swift deinits,
+    /// and ggml's Metal teardown asserts at exit (ggml_metal_rsets_free) if any
+    /// context's Metal resources are still alive. Queue blocks that touch the
+    /// context check `freed` first, so late transcribe calls fail as cancelled
+    /// instead of touching freed memory. Idempotent; called on the main thread
+    /// during app termination.
+    func shutdownAndFree() {
         cancelTranscription()
-        queue.sync {}
+        queue.sync {
+            guard !self.freed else { return }
+            self.freed = true
+            whisper_free(self.context)
+        }
     }
 
     // Synchronous lock helpers. Kept out of the async `transcribe` body so the NSLock
