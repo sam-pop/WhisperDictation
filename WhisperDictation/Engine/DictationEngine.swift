@@ -54,6 +54,20 @@ final class DictationEngine {
         loadModelAsync()
         LaunchAtLoginHelper.reconcile()
 
+        // Free whisper's Metal-backed contexts before exit(): NSApplication's
+        // terminate path never runs Swift deinits, and ggml aborts at exit
+        // (GGML_ASSERT in ggml_metal_rsets_free) if Metal resources are still
+        // alive when its static device registry is destroyed. Posted on the
+        // main thread; the engine lives for the whole process, so the observer
+        // is never removed.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.prepareForTermination()
+        }
+
         if !axTrusted {
             startAccessibilityPoller()
         }
@@ -612,6 +626,27 @@ final class DictationEngine {
         liveSegmenter = nil
         liveContinuation = nil
         liveSessionFlag = nil
+    }
+
+    /// App is terminating (main thread; exit() follows, skipping all deinits).
+    /// Stop capture, cancel and drain both whisper queues, and drop the last
+    /// references so the contexts are freed (whisper_free / whisper_vad_free)
+    /// before ggml's at-exit Metal assert. The idle-quit case — the one that
+    /// crashed — is fully deterministic here: the engine holds the only
+    /// references, so release frees synchronously. If a decode Task is still
+    /// in flight it holds its own bridge reference; the cancel flags make it
+    /// finish quickly and free off-main, best effort.
+    private func prepareForTermination() {
+        fputs("[DictationEngine] Terminating — freeing whisper contexts\n", stderr)
+        audioCapture.onSamples = nil
+        if audioCapture.isRecording { _ = audioCapture.stopRecording() }
+        // Cancel BEFORE the teardown drain so chunks committed during the drain
+        // abort instead of starting fresh decodes (same rule as teardownLiveSession).
+        liveSessionFlag?.cancel()
+        teardownLiveSession()
+        whisperBridge?.drainForShutdown()
+        whisperBridge = nil
+        fputs("[DictationEngine] Whisper contexts released\n", stderr)
     }
 
     /// Full teardown for paths where the consumer must ALSO stop (start
