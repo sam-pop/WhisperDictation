@@ -815,4 +815,14 @@ final class AudioDeviceManagerTests: XCTestCase {
         }
         // Either nil or valid — both are acceptable
     }
+
+    /// The picker and the capture engine share this lookup: a saved device that is
+    /// unplugged (or no saved device) resolves to nil, i.e. the system default.
+    func testDeviceWithUIDFallsBackToSystemDefaultWhenDisconnected() {
+        let brio = AudioInputDevice(id: 1, uid: "brio-uid", name: "Logitech BRIO")
+        let devices = [brio]
+        XCTAssertEqual(AudioDeviceManager.device(withUID: "brio-uid", in: devices), brio)
+        XCTAssertNil(AudioDeviceManager.device(withUID: "c920-uid", in: devices))
+        XCTAssertNil(AudioDeviceManager.device(withUID: nil, in: devices))
+    }
 }

@@ -21,8 +21,14 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
     }
 
     var selectedDevice: AudioInputDevice? {
-        guard let uid = AppSettings.shared.selectedAudioDeviceUID else { return nil }
-        return inputDevices.first { $0.uid == uid }
+        Self.device(withUID: AppSettings.shared.selectedAudioDeviceUID, in: inputDevices)
+    }
+
+    /// The connected device for `uid`, or nil when no device is saved or the saved
+    /// one isn't connected — recording then uses the system default input.
+    static func device(withUID uid: String?, in devices: [AudioInputDevice]) -> AudioInputDevice? {
+        guard let uid else { return nil }
+        return devices.first { $0.uid == uid }
     }
 
     var selectedOrDefault: AudioInputDevice? {
@@ -31,8 +37,7 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
 
     /// Set the selected device on a specific AVAudioEngine's input node (per-engine, not system-wide)
     func applySelectedDevice(to engine: AVAudioEngine) {
-        guard let uid = AppSettings.shared.selectedAudioDeviceUID else { return }
-        guard let device = inputDevices.first(where: { $0.uid == uid }) else { return }
+        guard let device = selectedDevice else { return }
 
         let inputNode = engine.inputNode
         guard let audioUnit = inputNode.audioUnit else {
