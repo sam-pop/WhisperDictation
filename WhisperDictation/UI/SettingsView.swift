@@ -224,7 +224,10 @@ private struct GeneralSection: View {
 
                 Picker("Mode", selection: $settings.hotkeyMode) {
                     Text("Push-to-talk").tag(AppSettings.HotkeyMode.pushToTalk)
-                    Text("Toggle — easier on the wrists").tag(AppSettings.HotkeyMode.toggle)
+                    // Keep segment labels short: macOS sizes segments equally to the
+                    // widest label, and a wider control overflows the fixed 620pt
+                    // window (the root HStack then clips both edges).
+                    Text("Toggle").tag(AppSettings.HotkeyMode.toggle)
                 }
                 .pickerStyle(.segmented)
                 .font(.system(size: 13))
@@ -263,8 +266,11 @@ private struct GeneralSection: View {
 
             SettingsCard(colorScheme: colorScheme) {
                 CardHeader("Microphone", subtitle: "Audio input device for recording")
+                // A saved device that's unplugged matches no tag (blank picker). Show
+                // System Default instead — what recording falls back to — without
+                // touching the saved UID, so the device is used again once reconnected.
                 Picker("Input device", selection: Binding(
-                    get: { settings.selectedAudioDeviceUID ?? "" },
+                    get: { audioDevices.selectedDevice?.uid ?? "" },
                     set: { settings.selectedAudioDeviceUID = $0.isEmpty ? nil : $0 }
                 )) {
                     Text("System Default").tag("")
@@ -274,6 +280,12 @@ private struct GeneralSection: View {
                 }
                 .font(.system(size: 13))
                 .onAppear { audioDevices.refreshDevices() }
+                if settings.selectedAudioDeviceUID != nil && audioDevices.selectedDevice == nil {
+                    Text("Your selected microphone isn't connected — using System Default until it's reconnected.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             SettingsCard(colorScheme: colorScheme) {
