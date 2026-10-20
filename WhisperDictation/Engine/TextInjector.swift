@@ -31,6 +31,12 @@ final class TextInjector: @unchecked Sendable {
                     keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: ptr.baseAddress)
                     keyUp.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: ptr.baseAddress)
                 }
+                // Events from a .hidSystemState source inherit physically held
+                // modifiers. Live dictation types while the push-to-talk hotkey
+                // (often Option) is still held, so apps saw Option+text and
+                // swallowed every phrase but the post-release residual.
+                keyDown.flags = []
+                keyUp.flags = []
 
                 keyDown.post(tap: .cghidEventTap)
                 keyUp.post(tap: .cghidEventTap)
