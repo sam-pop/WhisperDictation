@@ -52,7 +52,6 @@ private func abortCallback(_ userData: UnsafeMutableRawPointer?) -> Bool {
 final class WhisperBridge: @unchecked Sendable {
     private let context: OpaquePointer
     private let queue = DispatchQueue(label: "com.whisperdictation.whisper", qos: .userInitiated)
-    private let vadModelPath: String?
 
     /// True once `shutdownAndFree()` has freed `context`. Written and read only on
     /// `queue` (the same serialization that protects every context access), except
@@ -86,9 +85,7 @@ final class WhisperBridge: @unchecked Sendable {
         }
         self.context = ctx
 
-        let vadPath = ModelManager.shared.vadModelPath()
-        self.vadModelPath = vadPath
-        fputs("[WhisperBridge] Model loaded | GPU: \(Self.isAppleSilicon) | VAD: \(vadPath != nil)\n", stderr)
+        fputs("[WhisperBridge] Model loaded | GPU: \(Self.isAppleSilicon) | VAD: \(ModelManager.shared.vadModelPath() != nil)\n", stderr)
     }
 
     deinit {
@@ -273,8 +270,9 @@ final class WhisperBridge: @unchecked Sendable {
 
         // VAD — skippable per call: live-mode chunks are already speech-trimmed
         // by the segmenter, and whisper's internal VAD defaults (250 ms min
-        // speech) can silently discard a barely-min chunk.
-        if vadEnabled, let vadPath = self.vadModelPath {
+        // speech) can silently discard a barely-min chunk. Resolved per call, not
+        // cached at init: the VAD model may be downloaded after this model loaded.
+        if vadEnabled, let vadPath = ModelManager.shared.vadModelPath() {
             params.vad = true
             vadPathCStr = strdup(vadPath)
             params.vad_model_path = UnsafePointer(vadPathCStr)
