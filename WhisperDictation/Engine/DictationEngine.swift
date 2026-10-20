@@ -360,8 +360,15 @@ final class DictationEngine {
             try audioCapture.startRecording()
         } catch {
             fputs("[DictationEngine] Failed to start recording: \(error)\n", stderr)
-            teardownLiveSession()
-            state = .idle
+            if live {
+                // The consumer's finish owns returnToIdle. Going idle here let a
+                // re-press queued behind this (blocking) start begin a new recording
+                // that the pending finish then flipped to idle with capture running.
+                state = .processing
+                teardownLiveSession()
+            } else {
+                returnToIdle()
+            }
         }
     }
 
