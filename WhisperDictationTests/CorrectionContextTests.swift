@@ -50,6 +50,29 @@ final class CorrectionContextTests: XCTestCase {
                        "Open the file")
     }
 
+    /// Whisper splits long batch audio into segments that often cut mid-sentence;
+    /// joining them must not capitalize/terminate each one ("…branch and. Opened…").
+    func testBatchSegmentsJoinWithoutMidSentenceCapitalOrPeriod() {
+        let c = TranscriptCollector()
+        XCTAssertEqual(DictationEngine.joinCorrectedSegment("i pushed the branch and", into: c), "I pushed the branch and")
+        XCTAssertEqual(DictationEngine.joinCorrectedSegment("opened a pull request", into: c), " opened a pull request")
+        XCTAssertEqual(c.text, "I pushed the branch and opened a pull request")
+    }
+
+    /// A single-segment batch dictation (the common case) must type exactly what
+    /// `.standalone` correction produced before, golden corpus included.
+    func testSingleSegmentBatchMatchesStandaloneCorrection() {
+        for grammar in [true, false] {
+            AppSettings.shared.grammarCorrectionEnabled = grammar
+            for input in CorpusInputs.all + ["yes", "okay", "hello ."] {
+                let c = TranscriptCollector()
+                _ = DictationEngine.joinCorrectedSegment(input, into: c)
+                let period = DictationEngine.needsBatchTerminalPeriod(committed: c.text, grammarEnabled: grammar)
+                XCTAssertEqual(c.text + (period ? "." : ""), TextCorrector.shared.correct(input), "grammar \(grammar): \(input)")
+            }
+        }
+    }
+
     func testCollectorSentenceStartTracking() {
         let c = TranscriptCollector()
         XCTAssertTrue(c.atSentenceStart)                    // empty
