@@ -36,7 +36,10 @@ struct VADChunkGate {
     mutating func ingest(probability p: Float) -> Event {
         let index = windowCount
         windowCount += 1
-        if p < minProb { minProb = p; minProbIndex = index }
+        // Ceiling cut candidates: only windows AFTER the first speech window. The
+        // chunk's leading silence is always the global minimum, and cutting there
+        // (or at the first speech window) emits a silence-only chunk.
+        if speechWindows > 0, p < minProb { minProb = p; minProbIndex = index }
         if p >= Self.speechThreshold {
             speechWindows += 1
             trailingSilence = 0

@@ -52,6 +52,28 @@ final class VADChunkGateTests: XCTestCase {
         XCTAssertEqual(event, .commit(chunkEndWindow: 400))
     }
 
+    func testCeilingCutIgnoresLeadingSilence() {
+        // A chunk opens with sub-pause silence (carried after a previous cut); those
+        // windows are the global minimum but cutting there emits a silence-only chunk.
+        var gate = VADChunkGate()
+        var event = feed(&gate, silence: 5)
+        for i in 5..<VADChunkGate.ceilingWindows {
+            event = gate.ingest(probability: i == 400 ? 0.55 : 0.95)
+        }
+        XCTAssertEqual(event, .commit(chunkEndWindow: 400))
+    }
+
+    func testCeilingCutNeverLandsOnTheFirstSpeechWindow() {
+        // First speech window is the weakest speech in the chunk: cutting AT it
+        // would still emit only the leading silence.
+        var gate = VADChunkGate()
+        var event = feed(&gate, silence: 5)
+        _ = gate.ingest(probability: 0.5)
+        for _ in 6..<VADChunkGate.ceilingWindows { event = gate.ingest(probability: 0.95) }
+        guard case .commit(let end) = event else { return XCTFail("expected ceiling commit, got \(event)") }
+        XCTAssertGreaterThan(end, 5)
+    }
+
     func testGateIsFreshAfterCommit() {
         var gate = VADChunkGate()
         _ = feed(&gate, speech: 30, silence: VADChunkGate.pauseWindows)   // commit + reset
