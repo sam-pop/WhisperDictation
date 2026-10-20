@@ -73,6 +73,13 @@ final class WhisperBridge: @unchecked Sendable {
         #endif
     }
 
+    /// Decode threads, capped at 8. On GPU, 26 vs 8 threads measured identical; on
+    /// CPU-only decoding (Intel) all cores made decode times swing wildly (28 s to
+    /// 956 s for the same clip) while 8 was steady. Apple Silicon keeps 2 cores free.
+    static func decodeThreadCount(cores: Int, appleSilicon: Bool) -> Int {
+        max(1, min(8, appleSilicon ? cores - 2 : cores))
+    }
+
     init(modelPath: String) throws {
         var contextParams = whisper_context_default_params()
         contextParams.use_gpu = Self.isAppleSilicon
@@ -264,11 +271,8 @@ final class WhisperBridge: @unchecked Sendable {
         params.logprob_thold = -1.0
         params.no_speech_thold = 0.6
 
-        // Threads
-        let threadCount = Self.isAppleSilicon
-            ? max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
-            : max(1, ProcessInfo.processInfo.activeProcessorCount)
-        params.n_threads = Int32(threadCount)
+        params.n_threads = Int32(Self.decodeThreadCount(
+            cores: ProcessInfo.processInfo.activeProcessorCount, appleSilicon: Self.isAppleSilicon))
 
         // VAD — skippable per call: live-mode chunks are already speech-trimmed
         // by the segmenter, and whisper's internal VAD defaults (250 ms min
@@ -309,7 +313,7 @@ final class WhisperBridge: @unchecked Sendable {
         }
 
         let strategy = useBeamSearch ? "beam(5)" : "greedy"
-        fputs("[WhisperBridge] \(String(format: "%.1f", audioDuration))s | \(strategy) | \(threadCount)T | streaming: \(onSegment != nil)\n", stderr)
+        fputs("[WhisperBridge] \(String(format: "%.1f", audioDuration))s | \(strategy) | \(params.n_threads)T | streaming: \(onSegment != nil)\n", stderr)
 
         let result = audioBuffer.withUnsafeBufferPointer { bufferPtr in
             whisper_full(context, params, bufferPtr.baseAddress, Int32(audioBuffer.count))
