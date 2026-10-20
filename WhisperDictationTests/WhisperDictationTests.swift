@@ -305,6 +305,25 @@ final class ModelManagerTests: XCTestCase {
         XCTAssertEqual(try ModelManager.sha256Hex(ofFileAt: url), expected)
     }
 
+    /// The async `URLSession.download(from:delegate:)` never calls `didWriteData` on a
+    /// task delegate (the bar sat at 0), so progress must come from the task's
+    /// `Progress`, obtained in `didCreateTask`. No network: the task is never resumed.
+    func testDownloadDelegateReportsTaskProgress() {
+        var reported: [Double] = []
+        let delegate = DownloadDelegate { reported.append($0) }
+        let session = URLSession(configuration: .ephemeral)
+        let task = session.downloadTask(with: URL(string: "https://example.invalid/model.bin")!)
+        defer { task.cancel(); session.invalidateAndCancel() }
+
+        delegate.urlSession(session, didCreateTask: task)
+        task.progress.totalUnitCount = 200
+        task.progress.completedUnitCount = 50
+        task.progress.completedUnitCount = 200
+
+        XCTAssertEqual(reported.last ?? -1, 1.0, accuracy: 0.0001)
+        XCTAssertTrue(reported.contains { abs($0 - 0.25) < 0.0001 }, "got \(reported)")
+    }
+
     /// The active model is never deletable (it would leave the engine with no model);
     /// every other model is. Pure check — never touches the real Models directory.
     func testOnlyInactiveModelsAreDeletable() {

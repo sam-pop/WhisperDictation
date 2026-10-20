@@ -286,17 +286,20 @@ enum ModelError: LocalizedError {
     }
 }
 
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
+/// Task delegate for the async `URLSession.download(from:delegate:)`. That API never
+/// calls `didWriteData` on a task delegate, so progress is read from the task's own
+/// `Progress`, which is only reachable via `didCreateTask`.
+final class DownloadDelegate: NSObject, URLSessionTaskDelegate {
     let progressHandler: (Double) -> Void
+    private var observation: NSKeyValueObservation?
 
     init(progressHandler: @escaping (Double) -> Void) {
         self.progressHandler = progressHandler
     }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
-
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        progressHandler(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        observation = task.progress.observe(\.fractionCompleted) { [progressHandler] progress, _ in
+            progressHandler(progress.fractionCompleted)
+        }
     }
 }
