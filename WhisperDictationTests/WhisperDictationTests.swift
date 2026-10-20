@@ -856,6 +856,8 @@ final class AudioDeviceManagerTests: XCTestCase {
         manager.refreshDevices()
         // Should have at least one input device on any Mac
         XCTAssertFalse(manager.inputDevices.isEmpty, "No audio input devices found")
+        // Device strings come back through the unmanaged +1 CFString read.
+        XCTAssertFalse(manager.inputDevices.contains { $0.uid.isEmpty || $0.name == "Unknown" })
     }
 
     func testSelectedDeviceHandled() {
