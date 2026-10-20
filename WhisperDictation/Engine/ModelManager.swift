@@ -89,11 +89,11 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
 
         // VAD model
         static let vadSilero = ModelInfo(
-            name: "Silero VAD v5", fileName: "ggml-silero-v5.1.2.bin",
-            size: "2 MB", speed: "", accuracy: "",
-            url: URL(string: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin")!,
+            name: "Silero VAD v6", fileName: "ggml-silero-v6.2.0.bin",
+            size: "1 MB", speed: "", accuracy: "",
+            url: URL(string: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin")!,
             isQuantized: false,
-            sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
+            sha256: "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"
         )
 
         static let all: [ModelInfo] = [baseEnQ5, smallEnQ5, mediumEnQ5, baseEn, smallEn, mediumEn]
@@ -117,9 +117,27 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
         return fileManager.fileExists(atPath: path) ? path : nil
     }
 
+    /// VAD model shipped before v6. Still used if it's the only one on disk, until
+    /// `upgradeLegacyVADIfNeeded()` lands v6.
+    static let legacyVADFileName = "ggml-silero-v5.1.2.bin"
+
+    static func preferredVADFileName(existing: Set<String>) -> String? {
+        [ModelInfo.vadSilero.fileName, legacyVADFileName].first { existing.contains($0) }
+    }
+
     func vadModelPath() -> String? {
-        let path = modelsDirectory.appendingPathComponent(ModelInfo.vadSilero.fileName).path
-        return fileManager.fileExists(atPath: path) ? path : nil
+        let names = [ModelInfo.vadSilero.fileName, Self.legacyVADFileName]
+        let existing = Set(names.filter { fileManager.fileExists(atPath: modelsDirectory.appendingPathComponent($0).path) })
+        return Self.preferredVADFileName(existing: existing).map { modelsDirectory.appendingPathComponent($0).path }
+    }
+
+    /// Existing installs have only the v5 VAD model: fetch v6 in the background
+    /// (verified like any download). v5 keeps serving until v6 is in place.
+    @MainActor
+    func upgradeLegacyVADIfNeeded() {
+        let hasLegacy = fileManager.fileExists(atPath: modelsDirectory.appendingPathComponent(Self.legacyVADFileName).path)
+        guard hasLegacy, !isModelDownloaded(.vadSilero) else { return }
+        startDownload(.vadSilero)
     }
 
     func isModelDownloaded(_ model: ModelInfo) -> Bool {

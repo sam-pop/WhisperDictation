@@ -298,7 +298,7 @@ private struct GeneralSection: View {
                         set: { enabled in
                             settings.liveDictationEnabled = enabled
                             if enabled
-                                && !modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+                                && modelManager.vadModelPath() == nil
                                 && !modelManager.isDownloading(.vadSilero) {
                                 modelManager.startDownload(.vadSilero)
                             }
@@ -327,7 +327,7 @@ private struct GeneralSection: View {
         guard settings.liveDictationEnabled else {
             return "Types each phrase when you pause, instead of everything at the end. Works best with small or base models."
         }
-        if modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero) {
+        if modelManager.vadModelPath() != nil {
             return "Types each phrase when you pause. Works best with small or base models."
         }
         if modelManager.isDownloading(.vadSilero) {
@@ -499,9 +499,9 @@ private struct ModelSection: View {
             }
 
             // VAD model
-            CardHeader("Voice Activity Detection", subtitle: "Trims silence for faster inference (2 MB)")
+            CardHeader("Voice Activity Detection", subtitle: "Trims silence for faster inference (1 MB)")
 
-            let vadDownloaded = modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+            let vadDownloaded = modelManager.vadModelPath() != nil  // v6, or legacy v5 until upgraded
             SettingsCard(colorScheme: colorScheme) {
                 HStack(spacing: 14) {
                     ZStack {

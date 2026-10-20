@@ -247,7 +247,18 @@ final class ModelManagerTests: XCTestCase {
     func testVADModel() {
         let vad = ModelManager.ModelInfo.vadSilero
         XCTAssertTrue(vad.url.absoluteString.contains("whisper-vad"))
-        XCTAssertEqual(vad.fileName, "ggml-silero-v5.1.2.bin")
+        XCTAssertEqual(vad.fileName, "ggml-silero-v6.2.0.bin")
+    }
+
+    /// v6 is preferred; an existing install with only v5 keeps working on v5 until
+    /// the background upgrade lands, so live dictation never goes dark.
+    func testPreferredVADFileFallsBackToLegacyV5() {
+        let v6 = ModelManager.ModelInfo.vadSilero.fileName
+        let v5 = ModelManager.legacyVADFileName
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v5, v6]), v6)
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v5]), v5)
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v6]), v6)
+        XCTAssertNil(ModelManager.preferredVADFileName(existing: []))
     }
 
     // MARK: Download Integrity (Phase 1)

@@ -5,9 +5,9 @@ import Foundation
 /// accumulated windows become a chunk. Pure/static-constant so it is fully
 /// unit-testable without hardware or the VAD model.
 struct VADChunkGate {
-    /// Silero v5 processes 512-sample windows at 16 kHz (32 ms). n_window is
-    /// read from the model file with no public C accessor, so this constant is
-    /// pinned to ggml-silero-v5.1.2.bin — revisit on VAD model bumps.
+    /// Silero processes 512-sample windows at 16 kHz (32 ms). n_window is read
+    /// from the model file with no public C accessor, so this constant is pinned:
+    /// verified for v5.1.2 and v6.2.0 (566 probs per 18.1 s) — revisit on VAD bumps.
     static let windowSamples = 512
     static let speechThreshold: Float = 0.5
     /// ~0.45 s of consecutive silence after speech commits a boundary.

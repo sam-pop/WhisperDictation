@@ -47,6 +47,7 @@ private struct MenuBarLabel: View {
                 guard !didEvaluateOnboarding else { return }
                 didEvaluateOnboarding = true
                 presentOnboardingIfNeeded()
+                ModelManager.shared.upgradeLegacyVADIfNeeded()
             }
     }
 
