@@ -184,7 +184,18 @@ final class AudioCapture {
             self.onConfigurationChange?()
         }
 
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            // audioEngine is never set on this path, so stopRecording() can't
+            // clean up: drop the observer and tap here or they leak per failure.
+            if let configObserver {
+                NotificationCenter.default.removeObserver(configObserver)
+                self.configObserver = nil
+            }
+            inputNode.removeTap(onBus: 0)
+            throw error
+        }
         self.audioEngine = engine
         fputs("[AudioCapture] Recording started\n", stderr)
     }
