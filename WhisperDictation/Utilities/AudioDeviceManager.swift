@@ -112,11 +112,14 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var value: CFString = "" as CFString
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr else {
+        // Core Audio returns these CFStrings at +1: receive them unmanaged and take
+        // ownership, or each call leaks one.
+        var value: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr,
+              let value else {
             return nil
         }
-        return value as String
+        return value.takeRetainedValue() as String
     }
 }

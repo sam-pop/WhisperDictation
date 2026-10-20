@@ -247,7 +247,18 @@ final class ModelManagerTests: XCTestCase {
     func testVADModel() {
         let vad = ModelManager.ModelInfo.vadSilero
         XCTAssertTrue(vad.url.absoluteString.contains("whisper-vad"))
-        XCTAssertEqual(vad.fileName, "ggml-silero-v5.1.2.bin")
+        XCTAssertEqual(vad.fileName, "ggml-silero-v6.2.0.bin")
+    }
+
+    /// v6 is preferred; an existing install with only v5 keeps working on v5 until
+    /// the background upgrade lands, so live dictation never goes dark.
+    func testPreferredVADFileFallsBackToLegacyV5() {
+        let v6 = ModelManager.ModelInfo.vadSilero.fileName
+        let v5 = ModelManager.legacyVADFileName
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v5, v6]), v6)
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v5]), v5)
+        XCTAssertEqual(ModelManager.preferredVADFileName(existing: [v6]), v6)
+        XCTAssertNil(ModelManager.preferredVADFileName(existing: []))
     }
 
     // MARK: Download Integrity (Phase 1)
@@ -303,6 +314,39 @@ final class ModelManagerTests: XCTestCase {
         try Data().write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertEqual(try ModelManager.sha256Hex(ofFileAt: url), expected)
+    }
+
+    /// The async `URLSession.download(from:delegate:)` never calls `didWriteData` on a
+    /// task delegate (the bar sat at 0), so progress must come from the task's
+    /// `Progress`, obtained in `didCreateTask`. No network: the task is never resumed.
+    func testDownloadDelegateReportsTaskProgress() {
+        var reported: [Double] = []
+        let delegate = DownloadDelegate { reported.append($0) }
+        let session = URLSession(configuration: .ephemeral)
+        let task = session.downloadTask(with: URL(string: "https://example.invalid/model.bin")!)
+        defer { task.cancel(); session.invalidateAndCancel() }
+
+        delegate.urlSession(session, didCreateTask: task)
+        task.progress.totalUnitCount = 200
+        task.progress.completedUnitCount = 50
+        task.progress.completedUnitCount = 200
+
+        XCTAssertEqual(reported.last ?? -1, 1.0, accuracy: 0.0001)
+        XCTAssertTrue(reported.contains { abs($0 - 0.25) < 0.0001 }, "got \(reported)")
+    }
+
+    /// The active model is never deletable (it would leave the engine with no model);
+    /// every other model is. Pure check — never touches the real Models directory.
+    func testOnlyInactiveModelsAreDeletable() {
+        for active in ModelManager.ModelInfo.all {
+            for model in ModelManager.ModelInfo.all {
+                XCTAssertEqual(
+                    ModelManager.isDeletable(model, selectedModel: active.settingsId),
+                    model.fileName != active.fileName,
+                    "\(model.fileName) with active \(active.settingsId)"
+                )
+            }
+        }
     }
 
     /// Streaming hash of a multi-chunk (>1 MB) file must match a one-shot hash of
@@ -603,7 +647,7 @@ final class DictationEngineTests: XCTestCase {
     // MARK: - Prompt assembly (Phase 2)
 
     /// A base vocabulary prompt that alone exceeds the word budget must be
-    /// truncated (whisper's ~1024-token / ~750-word limit).
+    /// truncated (whisper only uses the last 223 prompt tokens).
     func testBuildPromptTruncatesOversizedBase() {
         let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
         let result = DictationEngine.buildPrompt(base: longBase, customTerms: [])
@@ -618,12 +662,51 @@ final class DictationEngineTests: XCTestCase {
         XCTAssertTrue(result.contains("Widget"))
     }
 
-    /// When the base prompt already fills the budget, no custom terms fit.
-    func testBuildPromptOversizedBaseLeavesNoRoomForCustomTerms() {
+    /// whisper keeps only the LAST ~223 prompt tokens, so an oversized base must yield
+    /// to the user's custom terms (it used to push them out entirely).
+    func testBuildPromptCustomTermsOutrankOversizedBase() {
         let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
         let result = DictationEngine.buildPrompt(base: longBase, customTerms: ["UniqueTermZZZ"])
-        XCTAssertFalse(result.contains("UniqueTermZZZ"))
+        XCTAssertTrue(result.hasSuffix("UniqueTermZZZ"))
+        XCTAssertTrue(result.hasPrefix("word0 word1"))     // base kept from its start (framing)
         XCTAssertEqual(result.split(separator: " ").count, DictationEngine.promptWordBudget)
+    }
+
+    /// Budget sized to whisper's real limit: 223 tokens at the measured 2.48
+    /// tokens/word of the default vocabulary prompt (1373 tokens / 553 words).
+    func testPromptWordBudgetFitsWhisperPromptWindow() {
+        XCTAssertLessThanOrEqual(Double(DictationEngine.promptWordBudget) * 2.48, 223)
+    }
+
+    /// Worst case (default prompt + 100 terms + long tail): stays in budget, and the
+    /// tail then the terms survive — the highest-priority text, nearest the decode.
+    func testBuildPromptPriorityTailThenTermsThenBase() {
+        let terms = (1...100).map { "term\($0)" }
+        let tail = (1...80).map { "t\($0)" }.joined(separator: " ")
+        let p = DictationEngine.buildPrompt(base: AppSettings.defaultVocabularyPrompt, customTerms: terms, transcriptTail: tail)
+        XCTAssertLessThanOrEqual(p.split(separator: " ").count, DictationEngine.promptWordBudget)
+        XCTAssertTrue(p.hasSuffix("t79 t80"))
+        XCTAssertTrue(p.contains("term1,"))
+    }
+
+    /// Every term the UI lets you add (promptTermLimit) must survive even a full
+    /// live tail. Previously 100 were allowed and as few as 39 reached whisper,
+    /// silently dropping the newest ones.
+    func testEveryAllowedTermSurvivesAFullLiveTail() {
+        XCTAssertLessThanOrEqual(DictationEngine.promptTermLimit + DictationEngine.liveTailWordCap,
+                                 DictationEngine.promptWordBudget)
+        let terms = (1...DictationEngine.promptTermLimit).map { "term\($0)" }
+        let tail = (1...80).map { "t\($0)" }.joined(separator: " ")
+        let p = DictationEngine.buildPrompt(base: AppSettings.defaultVocabularyPrompt, customTerms: terms, transcriptTail: tail)
+        XCTAssertTrue(p.contains("term\(DictationEngine.promptTermLimit) t"), "last allowed term missing: \(p)")
+    }
+
+    /// Storage keeps up to maxCustomTerms (so no saved term is ever deleted); only
+    /// the first promptTermLimit reach the prompt.
+    func testTermsBeyondPromptLimitAreNotSent() {
+        let terms = (1...100).map { "term\($0)" }
+        let p = DictationEngine.buildPrompt(base: "", customTerms: terms)
+        XCTAssertTrue(p.hasSuffix("term\(DictationEngine.promptTermLimit)"))
     }
 
     /// Empty custom terms → the base prompt is returned unchanged (when in budget).
@@ -635,8 +718,8 @@ final class DictationEngineTests: XCTestCase {
 // MARK: - buildPrompt committed-transcript tail
 
 /// The live-mode context carry: previously committed transcript text is appended
-/// last (nearest the decode), truncated to the last 50 words and to whatever word
-/// budget the base prompt and custom terms leave behind.
+/// last (nearest the decode), truncated to the last `liveTailWordCap` words; it
+/// outranks custom terms and the base prompt for the word budget.
 final class BuildPromptTailTests: XCTestCase {
     func testDefaultOmitsTailAndMatchesTwoArgCall() {
         XCTAssertEqual(DictationEngine.buildPrompt(base: "a b c", customTerms: ["X"]),
@@ -649,21 +732,23 @@ final class BuildPromptTailTests: XCTestCase {
         XCTAssertTrue(p.hasPrefix("vocab"))
     }
 
-    func testTailTruncatedToLastFiftyWords() {
+    func testTailTruncatedToLiveTailWordCap() {
+        XCTAssertEqual(DictationEngine.liveTailWordCap, 29)
         let tail = (1...80).map(String.init).joined(separator: " ")
         let p = DictationEngine.buildPrompt(base: "v", customTerms: [], transcriptTail: tail)
-        XCTAssertFalse(p.contains(" 30 "))          // words 1-30 dropped
-        XCTAssertTrue(p.hasSuffix("79 80"))          // last 50 kept: 31...80
+        XCTAssertFalse(p.contains(" 51 "))          // words 1-51 dropped
+        XCTAssertTrue(p.hasSuffix("79 80"))
+        XCTAssertTrue(p.contains(" 52 "))            // last 29 kept: 52...80
     }
 
-    func testTailRespectsRemainingBudgetByActualWordCount() {
-        let base = (1...690).map { "b\($0)" }.joined(separator: " ")  // 690 words
-        let tail = (1...40).map { "t\($0)" }.joined(separator: " ")   // 40 words, budget left = 10
+    /// The tail outranks the base: a long base is trimmed, the tail is kept whole.
+    func testTailOutranksLongBase() {
+        let base = (1...690).map { "b\($0)" }.joined(separator: " ")
+        let tail = (1...20).map { "t\($0)" }.joined(separator: " ")
         let p = DictationEngine.buildPrompt(base: base, customTerms: [], transcriptTail: tail)
-        let words = p.split(separator: " ")
-        XCTAssertLessThanOrEqual(words.count, DictationEngine.promptWordBudget)
-        XCTAssertTrue(p.hasSuffix("t39 t40"))        // last 10 tail words kept
-        XCTAssertFalse(p.contains("t30 "))
+        XCTAssertEqual(p.split(separator: " ").count, DictationEngine.promptWordBudget)
+        XCTAssertTrue(p.hasSuffix(tail))
+        XCTAssertTrue(p.hasPrefix("b1 b2"))
     }
 }
 
@@ -814,5 +899,73 @@ final class AudioDeviceManagerTests: XCTestCase {
             XCTAssertFalse(device.uid.isEmpty)
         }
         // Either nil or valid — both are acceptable
+    }
+}
+
+// MARK: - HotkeyMonitor non-modifier decision
+
+/// A held non-modifier hotkey (Space, Return, …) generates autorepeat key-downs;
+/// those must be swallowed, not passed through to the focused app.
+final class HotkeyNonModifierDecisionTests: XCTestCase {
+    func testPressReleaseAndAutorepeat() {
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: true, isHeld: false), .press)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: true, isHeld: true), .swallow)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: false, isHeld: true), .release)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: false, isHeld: false), .passThrough)
+    }
+}
+
+// MARK: - HotkeyMonitor own-event pass-through
+
+/// TextInjector posts its typing as virtualKey 0 (the A key). With an "A" hotkey
+/// those events must never be read as the hotkey, so anything our own process
+/// posted passes straight through.
+final class HotkeyOwnEventTests: XCTestCase {
+    func testOnlyOurOwnPidIsTreatedAsSelfInjected() {
+        XCTAssertTrue(HotkeyMonitor.isOwnEvent(sourcePID: Int64(getpid())))
+        XCTAssertFalse(HotkeyMonitor.isOwnEvent(sourcePID: 0))                    // hardware
+        XCTAssertFalse(HotkeyMonitor.isOwnEvent(sourcePID: Int64(getpid()) + 1))  // another app
+    }
+}
+
+// MARK: - HotkeyMonitor sided modifier state
+
+/// A sided modifier hotkey (e.g. Right Option) must read its OWN side: releasing
+/// it while the other side is held still carries the generic mask, which used to
+/// leave push-to-talk stuck in .recording.
+final class HotkeyModifierPressedTests: XCTestCase {
+    private func flags(_ generic: CGEventFlags, device: UInt64 = 0) -> CGEventFlags {
+        CGEventFlags(rawValue: generic.rawValue | device)
+    }
+
+    func testSidedModifierUsesItsOwnDeviceBit() {
+        // Right Option (61): device bit 0x40; Left Option device bit 0x20.
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x40)))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x60)))
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x20)))  // only Left held
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 59, flags: flags(.maskControl, device: 0x2000)))  // Left Ctrl hotkey, Right held
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 54, flags: flags(.maskCommand, device: 0x10)))
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: []))
+    }
+
+    func testFallsBackToGenericMaskWithoutDeviceBits() {
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: .maskAlternate))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 56, flags: .maskShift))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 57, flags: .maskAlphaShift))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 63, flags: .maskSecondaryFn))
+    }
+}
+
+// MARK: - WhisperBridge decode thread count
+
+/// Capped at 8: on GPU, 26 vs 8 threads measured identical (M3 Ultra); on CPU-only
+/// decoding (the Intel path) all cores was wildly unstable while 8 was steady.
+final class DecodeThreadCountTests: XCTestCase {
+    func testThreadCountIsCappedAndNeverZero() {
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 28, appleSilicon: true), 8)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 28, appleSilicon: false), 8)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 8, appleSilicon: true), 6)   // keeps 2 cores free
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 4, appleSilicon: false), 4)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 1, appleSilicon: true), 1)
     }
 }

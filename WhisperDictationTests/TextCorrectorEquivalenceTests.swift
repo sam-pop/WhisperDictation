@@ -7,9 +7,10 @@ import XCTest
 /// here so the compiled-regex rewrite is provably behavior-preserving.
 ///
 /// NOTE: some expected outputs contain quirks that live in passes NOT touched by the
-/// refactor (e.g. "Next.Js" — the sentence-capitalizer treats "." in "Next.js" as a
-/// sentence end; "IPad"/"IOS" — sentence-start capitalization overrides brand casing).
-/// They are locked deliberately: the refactor must not change them.
+/// refactor ("IPad"/"IOS" — sentence-start capitalization overrides brand casing).
+/// They are locked deliberately: the refactor must not change them. ("Next.Js" was
+/// such a quirk until the capitalizer stopped treating a "." followed by a letter or
+/// digit as a sentence end; those three cases were updated deliberately.)
 final class TextCorrectorEquivalenceTests: XCTestCase {
     private static let expected: [String] = [
         "The API returns JSON.",
@@ -19,9 +20,9 @@ final class TextCorrectorEquivalenceTests: XCTestCase {
         "PostgreSQL.",
         "PostgreSQL.",
         "Migrate from PostgreSQL to PostgreSQL.",
-        "Next.Js.",
-        "Next.Js.",
-        "Compare Next.Js and Next.Js.",
+        "Next.js.",
+        "Next.js.",
+        "Compare Next.js and Next.js.",
         "CI/CD.",
         "CI/CD.",
         "Set up CI/CD and CI/CD pipelines.",
@@ -90,10 +91,10 @@ final class TextCorrectorEquivalenceTests: XCTestCase {
 
     func testNextDotJsLiteralDotHandled() {
         withHermeticSettings {
-            // Both spellings collapse to the same term output (then the sentence
-            // capitalizer upper-cases the letter after the dot — locked quirk).
-            XCTAssertEqual(TextCorrector.shared.correct("next.js"), "Next.Js.")
-            XCTAssertEqual(TextCorrector.shared.correct("nextjs"), "Next.Js.")
+            // Both spellings collapse to the same term output, and the dot inside
+            // the name is not a sentence end.
+            XCTAssertEqual(TextCorrector.shared.correct("next.js"), "Next.js.")
+            XCTAssertEqual(TextCorrector.shared.correct("nextjs"), "Next.js.")
         }
     }
 

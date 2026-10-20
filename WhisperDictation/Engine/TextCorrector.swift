@@ -286,7 +286,12 @@ final class TextCorrector: @unchecked Sendable {
             if capitalizeNext && chars[i].isLetter {
                 chars[i] = Character(chars[i].uppercased())
                 capitalizeNext = false
-            } else if ".!?".contains(chars[i]) {
+            } else if chars[i] == "." {
+                // A dot inside a token ("Next.js", "3.5", "example.com") is not a
+                // sentence end; one followed by a space, quote, etc. still is.
+                let next: Character? = i + 1 < chars.count ? chars[i + 1] : nil
+                capitalizeNext = !(next.map { $0.isLetter || $0.isNumber } ?? false)
+            } else if "!?".contains(chars[i]) {
                 capitalizeNext = true
             } else if chars[i].isLetter {
                 capitalizeNext = false
@@ -296,6 +301,10 @@ final class TextCorrector: @unchecked Sendable {
     }
 
     // MARK: - Pass 3: Punctuation Cleanup
+
+    /// Trailing characters after which no terminal period is appended (a digit
+    /// also blocks it). Shared with live mode's stop-time rule.
+    static let noPeriodAfter = ".!?,;:\"')"
 
     private func fixPunctuation(_ text: String, appendPeriod: Bool) -> String {
         var result = text
@@ -323,7 +332,7 @@ final class TextCorrector: @unchecked Sendable {
         if appendPeriod,
            result.count > 3,
            let last = result.last,
-           !".!?,;:\"')".contains(last),
+           !Self.noPeriodAfter.contains(last),
            !last.isNumber {
             result += "."
         }

@@ -52,7 +52,6 @@ private func abortCallback(_ userData: UnsafeMutableRawPointer?) -> Bool {
 final class WhisperBridge: @unchecked Sendable {
     private let context: OpaquePointer
     private let queue = DispatchQueue(label: "com.whisperdictation.whisper", qos: .userInitiated)
-    private let vadModelPath: String?
 
     /// True once `shutdownAndFree()` has freed `context`. Written and read only on
     /// `queue` (the same serialization that protects every context access), except
@@ -74,6 +73,13 @@ final class WhisperBridge: @unchecked Sendable {
         #endif
     }
 
+    /// Decode threads, capped at 8. On GPU, 26 vs 8 threads measured identical; on
+    /// CPU-only decoding (Intel) all cores made decode times swing wildly (28 s to
+    /// 956 s for the same clip) while 8 was steady. Apple Silicon keeps 2 cores free.
+    static func decodeThreadCount(cores: Int, appleSilicon: Bool) -> Int {
+        max(1, min(8, appleSilicon ? cores - 2 : cores))
+    }
+
     init(modelPath: String) throws {
         var contextParams = whisper_context_default_params()
         contextParams.use_gpu = Self.isAppleSilicon
@@ -86,9 +92,7 @@ final class WhisperBridge: @unchecked Sendable {
         }
         self.context = ctx
 
-        let vadPath = ModelManager.shared.vadModelPath()
-        self.vadModelPath = vadPath
-        fputs("[WhisperBridge] Model loaded | GPU: \(Self.isAppleSilicon) | VAD: \(vadPath != nil)\n", stderr)
+        fputs("[WhisperBridge] Model loaded | GPU: \(Self.isAppleSilicon) | VAD: \(ModelManager.shared.vadModelPath() != nil)\n", stderr)
     }
 
     deinit {
@@ -243,15 +247,17 @@ final class WhisperBridge: @unchecked Sendable {
         }
 
         // Allocate C strings (freed in defer)
+        // No suppress_regex: whisper.cpp regex-matches the whole vocabulary per
+        // decoded token (60–90% of wall time in benchmarks), and as a full-token
+        // match it only ever hit a bare "you". Removing it was 1.5–7.6× faster
+        // with identical transcripts.
         let langCStr = strdup("en")
-        let suppressCStr = strdup("(Thank you|Thanks for watching|Please subscribe|you)")
         let promptCStr = prompt.isEmpty ? nil : strdup(prompt)
         var vadPathCStr: UnsafeMutablePointer<CChar>?
 
         params.language = UnsafePointer(langCStr)
         params.translate = false
         params.suppress_nst = true
-        params.suppress_regex = UnsafePointer(suppressCStr)
         // true = each transcription is independent (prevents hallucination carry-over)
         params.no_context = true
 
@@ -265,16 +271,14 @@ final class WhisperBridge: @unchecked Sendable {
         params.logprob_thold = -1.0
         params.no_speech_thold = 0.6
 
-        // Threads
-        let threadCount = Self.isAppleSilicon
-            ? max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
-            : max(1, ProcessInfo.processInfo.activeProcessorCount)
-        params.n_threads = Int32(threadCount)
+        params.n_threads = Int32(Self.decodeThreadCount(
+            cores: ProcessInfo.processInfo.activeProcessorCount, appleSilicon: Self.isAppleSilicon))
 
         // VAD — skippable per call: live-mode chunks are already speech-trimmed
         // by the segmenter, and whisper's internal VAD defaults (250 ms min
-        // speech) can silently discard a barely-min chunk.
-        if vadEnabled, let vadPath = self.vadModelPath {
+        // speech) can silently discard a barely-min chunk. Resolved per call, not
+        // cached at init: the VAD model may be downloaded after this model loaded.
+        if vadEnabled, let vadPath = ModelManager.shared.vadModelPath() {
             params.vad = true
             vadPathCStr = strdup(vadPath)
             params.vad_model_path = UnsafePointer(vadPathCStr)
@@ -302,7 +306,6 @@ final class WhisperBridge: @unchecked Sendable {
 
         defer {
             free(langCStr)
-            free(suppressCStr)
             if let p = promptCStr { free(p) }
             if let v = vadPathCStr { free(v) }
             callbackCtxPtr?.release()
@@ -310,7 +313,7 @@ final class WhisperBridge: @unchecked Sendable {
         }
 
         let strategy = useBeamSearch ? "beam(5)" : "greedy"
-        fputs("[WhisperBridge] \(String(format: "%.1f", audioDuration))s | \(strategy) | \(threadCount)T | streaming: \(onSegment != nil)\n", stderr)
+        fputs("[WhisperBridge] \(String(format: "%.1f", audioDuration))s | \(strategy) | \(params.n_threads)T | streaming: \(onSegment != nil)\n", stderr)
 
         let result = audioBuffer.withUnsafeBufferPointer { bufferPtr in
             whisper_full(context, params, bufferPtr.baseAddress, Int32(audioBuffer.count))
