@@ -224,7 +224,10 @@ private struct GeneralSection: View {
 
                 Picker("Mode", selection: $settings.hotkeyMode) {
                     Text("Push-to-talk").tag(AppSettings.HotkeyMode.pushToTalk)
-                    Text("Toggle — easier on the wrists").tag(AppSettings.HotkeyMode.toggle)
+                    // Short label: segments share the widest label's width and never
+                    // compress, so a long one overflows the 620pt window and clips the
+                    // sidebar. The "easier on the wrists" copy lives in the subtitle.
+                    Text("Toggle").tag(AppSettings.HotkeyMode.toggle)
                 }
                 .pickerStyle(.segmented)
                 .font(.system(size: 13))
