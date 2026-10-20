@@ -73,6 +73,16 @@ final class CorrectionContextTests: XCTestCase {
         }
     }
 
+    /// A "." directly followed by a letter or digit (dotted names, decimals) is not
+    /// a sentence end; "." followed by a space or closing quote still is.
+    func testDotInsideTokenDoesNotCapitalizeNextLetter() {
+        XCTAssertEqual(TextCorrector.shared.correct("we use next.js and node"), "We use Next.js and node.")
+        XCTAssertEqual(TextCorrector.shared.correct("version 3.5 ships"), "Version 3.5 ships.")
+        XCTAssertEqual(TextCorrector.shared.correct("visit example.com today"), "Visit example.com today.")
+        XCTAssertEqual(TextCorrector.shared.correct("e.g. the cache"), "E.g. The cache.")   // abbreviation: unchanged
+        XCTAssertEqual(TextCorrector.shared.correct("he said \"stop.\" then left"), "He said \"stop.\" Then left.")
+    }
+
     func testCollectorSentenceStartTracking() {
         let c = TranscriptCollector()
         XCTAssertTrue(c.atSentenceStart)                    // empty
