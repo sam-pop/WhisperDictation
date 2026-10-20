@@ -240,15 +240,17 @@ final class WhisperBridge: @unchecked Sendable {
         }
 
         // Allocate C strings (freed in defer)
+        // No suppress_regex: whisper.cpp regex-matches the whole vocabulary per
+        // decoded token (60–90% of wall time in benchmarks), and as a full-token
+        // match it only ever hit a bare "you". Removing it was 1.5–7.6× faster
+        // with identical transcripts.
         let langCStr = strdup("en")
-        let suppressCStr = strdup("(Thank you|Thanks for watching|Please subscribe|you)")
         let promptCStr = prompt.isEmpty ? nil : strdup(prompt)
         var vadPathCStr: UnsafeMutablePointer<CChar>?
 
         params.language = UnsafePointer(langCStr)
         params.translate = false
         params.suppress_nst = true
-        params.suppress_regex = UnsafePointer(suppressCStr)
         // true = each transcription is independent (prevents hallucination carry-over)
         params.no_context = true
 
@@ -300,7 +302,6 @@ final class WhisperBridge: @unchecked Sendable {
 
         defer {
             free(langCStr)
-            free(suppressCStr)
             if let p = promptCStr { free(p) }
             if let v = vadPathCStr { free(v) }
             callbackCtxPtr?.release()
