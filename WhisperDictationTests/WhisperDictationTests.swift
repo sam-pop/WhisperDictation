@@ -651,12 +651,31 @@ final class DictationEngineTests: XCTestCase {
         XCTAssertTrue(result.contains("Widget"))
     }
 
-    /// When the base prompt already fills the budget, no custom terms fit.
-    func testBuildPromptOversizedBaseLeavesNoRoomForCustomTerms() {
+    /// whisper keeps only the LAST ~223 prompt tokens, so an oversized base must yield
+    /// to the user's custom terms (it used to push them out entirely).
+    func testBuildPromptCustomTermsOutrankOversizedBase() {
         let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
         let result = DictationEngine.buildPrompt(base: longBase, customTerms: ["UniqueTermZZZ"])
-        XCTAssertFalse(result.contains("UniqueTermZZZ"))
+        XCTAssertTrue(result.hasSuffix("UniqueTermZZZ"))
+        XCTAssertTrue(result.hasPrefix("word0 word1"))     // base kept from its start (framing)
         XCTAssertEqual(result.split(separator: " ").count, DictationEngine.promptWordBudget)
+    }
+
+    /// Budget sized to whisper's real limit: 223 tokens at the measured 2.48
+    /// tokens/word of the default vocabulary prompt (1373 tokens / 553 words).
+    func testPromptWordBudgetFitsWhisperPromptWindow() {
+        XCTAssertLessThanOrEqual(Double(DictationEngine.promptWordBudget) * 2.48, 223)
+    }
+
+    /// Worst case (default prompt + 100 terms + long tail): stays in budget, and the
+    /// tail then the terms survive — the highest-priority text, nearest the decode.
+    func testBuildPromptPriorityTailThenTermsThenBase() {
+        let terms = (1...100).map { "term\($0)" }
+        let tail = (1...80).map { "t\($0)" }.joined(separator: " ")
+        let p = DictationEngine.buildPrompt(base: AppSettings.defaultVocabularyPrompt, customTerms: terms, transcriptTail: tail)
+        XCTAssertLessThanOrEqual(p.split(separator: " ").count, DictationEngine.promptWordBudget)
+        XCTAssertTrue(p.hasSuffix("t79 t80"))
+        XCTAssertTrue(p.contains("term1,"))
     }
 
     /// Empty custom terms → the base prompt is returned unchanged (when in budget).
@@ -689,14 +708,14 @@ final class BuildPromptTailTests: XCTestCase {
         XCTAssertTrue(p.hasSuffix("79 80"))          // last 50 kept: 31...80
     }
 
-    func testTailRespectsRemainingBudgetByActualWordCount() {
-        let base = (1...690).map { "b\($0)" }.joined(separator: " ")  // 690 words
-        let tail = (1...40).map { "t\($0)" }.joined(separator: " ")   // 40 words, budget left = 10
+    /// The tail outranks the base: a long base is trimmed, the tail is kept whole.
+    func testTailOutranksLongBase() {
+        let base = (1...690).map { "b\($0)" }.joined(separator: " ")
+        let tail = (1...40).map { "t\($0)" }.joined(separator: " ")
         let p = DictationEngine.buildPrompt(base: base, customTerms: [], transcriptTail: tail)
-        let words = p.split(separator: " ")
-        XCTAssertLessThanOrEqual(words.count, DictationEngine.promptWordBudget)
-        XCTAssertTrue(p.hasSuffix("t39 t40"))        // last 10 tail words kept
-        XCTAssertFalse(p.contains("t30 "))
+        XCTAssertEqual(p.split(separator: " ").count, DictationEngine.promptWordBudget)
+        XCTAssertTrue(p.hasSuffix(tail))
+        XCTAssertTrue(p.hasPrefix("b1 b2"))
     }
 }
 
@@ -847,5 +866,18 @@ final class AudioDeviceManagerTests: XCTestCase {
             XCTAssertFalse(device.uid.isEmpty)
         }
         // Either nil or valid — both are acceptable
+    }
+}
+
+// MARK: - HotkeyMonitor non-modifier decision
+
+/// A held non-modifier hotkey (Space, Return, …) generates autorepeat key-downs;
+/// those must be swallowed, not passed through to the focused app.
+final class HotkeyNonModifierDecisionTests: XCTestCase {
+    func testPressReleaseAndAutorepeat() {
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: true, isHeld: false), .press)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: true, isHeld: true), .swallow)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: false, isHeld: true), .release)
+        XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: false, isHeld: false), .passThrough)
     }
 }

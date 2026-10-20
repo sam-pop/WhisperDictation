@@ -297,6 +297,10 @@ final class TextCorrector: @unchecked Sendable {
 
     // MARK: - Pass 3: Punctuation Cleanup
 
+    /// Trailing characters after which no terminal period is appended (a digit
+    /// also blocks it). Shared with live mode's stop-time rule.
+    static let noPeriodAfter = ".!?,;:\"')"
+
     private func fixPunctuation(_ text: String, appendPeriod: Bool) -> String {
         var result = text
 
@@ -323,7 +327,7 @@ final class TextCorrector: @unchecked Sendable {
         if appendPeriod,
            result.count > 3,
            let last = result.last,
-           !".!?,;:\"')".contains(last),
+           !Self.noPeriodAfter.contains(last),
            !last.isNumber {
             result += "."
         }

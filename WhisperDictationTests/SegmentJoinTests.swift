@@ -29,4 +29,12 @@ final class LiveSessionDecisionTests: XCTestCase {
         XCTAssertFalse(DictationEngine.needsTerminalPeriod(committed: "Really?"))
         XCTAssertTrue(DictationEngine.needsTerminalPeriod(committed: "open the file"))
     }
+
+    /// Same no-period set as batch's fixPunctuation: a chunk cut at a pause often
+    /// ends in "," and appending "." produced "milk,." (append-only, can't revise).
+    func testTerminalPeriodSkippedAfterSoftPunctuationAndDigits() {
+        for text in ["eggs, milk,", "note;", "as follows:", "he said \"go\"", "it's 'fine'", "(see above)", "version 2"] {
+            XCTAssertFalse(DictationEngine.needsTerminalPeriod(committed: text), text)
+        }
+    }
 }

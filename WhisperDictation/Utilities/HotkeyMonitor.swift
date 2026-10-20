@@ -116,6 +116,19 @@ final class HotkeyMonitor {
         }
     }
 
+    enum NonModifierDecision: Equatable { case press, release, swallow, passThrough }
+
+    /// What a key-down/up of a NON-modifier hotkey does. A held key autorepeats
+    /// key-downs; those are swallowed so they never reach the focused app.
+    static func nonModifierDecision(isKeyDown: Bool, isHeld: Bool) -> NonModifierDecision {
+        switch (isKeyDown, isHeld) {
+        case (true, false): return .press
+        case (true, true): return .swallow
+        case (false, true): return .release
+        case (false, false): return .passThrough
+        }
+    }
+
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
@@ -139,21 +152,27 @@ final class HotkeyMonitor {
                 os_unfair_lock_unlock(lock)
             }
         } else {
-            if keyCode == monitoredKeyCode {
+            if keyCode == monitoredKeyCode, type == .keyDown || type == .keyUp {
                 os_unfair_lock_lock(lock)
-                let wasHeld = isKeyHeld
-                if type == .keyDown && !wasHeld {
-                    isKeyHeld = true
-                    os_unfair_lock_unlock(lock)
-                    DispatchQueue.main.async { self.onKeyDown() }
-                    return nil
-                } else if type == .keyUp && wasHeld {
-                    isKeyHeld = false
-                    os_unfair_lock_unlock(lock)
-                    DispatchQueue.main.async { self.onKeyUp() }
-                    return nil
+                let decision = Self.nonModifierDecision(isKeyDown: type == .keyDown, isHeld: isKeyHeld)
+                switch decision {
+                case .press: isKeyHeld = true
+                case .release: isKeyHeld = false
+                case .swallow, .passThrough: break
                 }
                 os_unfair_lock_unlock(lock)
+                switch decision {
+                case .press:
+                    DispatchQueue.main.async { self.onKeyDown() }
+                    return nil
+                case .release:
+                    DispatchQueue.main.async { self.onKeyUp() }
+                    return nil
+                case .swallow:
+                    return nil
+                case .passThrough:
+                    break
+                }
             }
         }
 

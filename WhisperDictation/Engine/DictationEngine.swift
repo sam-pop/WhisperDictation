@@ -96,13 +96,22 @@ final class DictationEngine {
 
     // MARK: - Model Loading
 
+    /// Bumped by every load. Only the newest load may install its bridge or report
+    /// an error: overlapping loads (quick model switches) otherwise finish in any
+    /// order, and the last to finish — possibly the older selection — would win.
+    /// Main-actor only.
+    private var modelLoadGeneration = 0
+
     private func loadModelAsync() {
+        modelLoadGeneration += 1
+        let generation = modelLoadGeneration
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             do {
                 let modelPath = ModelManager.shared.activeModelPath()
                 guard let modelPath else {
                     await MainActor.run {
+                        guard generation == self.modelLoadGeneration else { return }
                         self.modelLoadError = "No model found. Open Settings to download a model."
                     }
                     return
@@ -114,12 +123,15 @@ final class DictationEngine {
                 await bridge.warmup()
 
                 await MainActor.run {
+                    // Superseded: drop this bridge (freed by deinit; idle, no users).
+                    guard generation == self.modelLoadGeneration else { return }
                     self.whisperBridge = bridge
                     self.isModelLoaded = true
                     self.modelLoadError = nil
                 }
             } catch {
                 await MainActor.run {
+                    guard generation == self.modelLoadGeneration else { return }
                     self.modelLoadError = "Failed to load model: \(error.localizedDescription)"
                 }
             }
@@ -294,39 +306,41 @@ final class DictationEngine {
 
     // MARK: - Prompt Assembly
 
-    /// Whisper's initial_prompt is capped at ~1024 tokens (~750 words). Exceeding it
-    /// triggers `whisper_tokenize: too many resulting tokens` and degrades accuracy
-    /// (see CLAUDE.md). We budget 700 words as a safe margin.
-    static let promptWordBudget = 700
+    /// whisper.cpp uses only the LAST `n_text_ctx/2 - 1` = 223 tokens of the prompt
+    /// and silently drops the rest from the front. The default vocabulary prompt
+    /// measures 2.48 tokens/word (1373 tokens / 553 words), so 89 words fit.
+    static let promptWordBudget = 89
 
-    /// Builds the whisper initial_prompt from the base vocabulary prompt plus the
-    /// user's custom terms, staying within `promptWordBudget` words. The base prompt
-    /// is truncated first if it alone exceeds the budget; custom terms then fill any
-    /// remaining word budget. Pure/static so it is unit-testable without the engine.
+    /// Builds the whisper initial_prompt within `promptWordBudget` words, filled by
+    /// priority: committed-transcript tail (≤50 words), then the user's custom terms,
+    /// then the base vocabulary prompt from its start. Output order is base, terms,
+    /// tail — lowest priority at the front, which is what whisper drops if the
+    /// words→tokens estimate overshoots. Pure/static so it is unit-testable.
     ///
     /// - Parameter transcriptTail: text already committed in this dictation, used by
     ///   live mode so each chunk decodes with the preceding words as context. Empty
-    ///   (the default) leaves the prompt byte-identical to the non-live build.
+    ///   (the default) gives the same prompt as the non-live path.
     static func buildPrompt(base: String, customTerms: [String], transcriptTail: String = "") -> String {
+        let tailWords = transcriptTail.split(separator: " ").suffix(min(50, promptWordBudget))
+        var remaining = promptWordBudget - tailWords.count
+
+        // Terms keep their historical one-unit-each accounting.
+        let termsToAdd = customTerms.prefix(remaining)
+        remaining -= termsToAdd.count
+
         let baseWords = base.split(separator: " ")
-        let cappedBase = baseWords.count > promptWordBudget
-            ? baseWords.prefix(promptWordBudget).joined(separator: " ")
+        let cappedBase = baseWords.count > remaining
+            ? baseWords.prefix(remaining).joined(separator: " ")
             : base
 
-        let termBudget = max(0, promptWordBudget - baseWords.count)
-        let termsToAdd = Array(customTerms.prefix(termBudget))
-        let withTerms = termsToAdd.isEmpty
-            ? cappedBase
-            : cappedBase + ", " + termsToAdd.joined(separator: ", ")
-
-        // Committed-transcript tail: budgeted by ACTUAL word count (terms above
-        // deliberately keep their historical one-unit-each accounting), capped
-        // at 50 words, appended last — closest to the decode.
-        let tailWords = transcriptTail.split(separator: " ")
-        let usedWords = min(baseWords.count, promptWordBudget) + termsToAdd.count
-        let tailBudget = min(50, max(0, promptWordBudget - usedWords))
-        guard tailBudget > 0, !tailWords.isEmpty else { return withTerms }
-        return withTerms + " " + tailWords.suffix(tailBudget).joined(separator: " ")
+        var prompt = cappedBase
+        if !termsToAdd.isEmpty {
+            prompt += (prompt.isEmpty ? "" : ", ") + termsToAdd.joined(separator: ", ")
+        }
+        if !tailWords.isEmpty {
+            prompt += (prompt.isEmpty ? "" : " ") + tailWords.joined(separator: " ")
+        }
+        return prompt
     }
 
     // MARK: - Recording Flow
@@ -465,7 +479,7 @@ final class DictationEngine {
     /// intermediate chunk).
     static func needsTerminalPeriod(committed: String) -> Bool {
         guard let last = committed.last else { return false }
-        return !".!?".contains(last)
+        return !TextCorrector.noPeriodAfter.contains(last) && !last.isNumber
     }
 
     private var liveSegmenter: VADSegmenter?
