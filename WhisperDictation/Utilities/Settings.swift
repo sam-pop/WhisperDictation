@@ -158,7 +158,8 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
     // MARK: - Default Vocabulary Prompt
 
-    // ~500 words — under whisper's 1024 token (~750 word) limit
+    // ~550 words / ~1373 tokens. whisper only uses the last 223 prompt tokens, so
+    // DictationEngine.buildPrompt keeps just the start of this (see promptWordBudget).
     static let defaultVocabularyPrompt = """
         Technical software engineering discussion. \
         Languages: JavaScript, TypeScript, Python, Swift, SwiftUI, Rust, Go, Golang, \

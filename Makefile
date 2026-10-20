@@ -46,6 +46,7 @@ model:
 
 define BUILD_SLICE
 xcrun swiftc \
+	-O \
 	-sdk "$(SDK)" \
 	-target $(1)-apple-macos$(MIN_MACOS) \
 	-import-objc-header WhisperDictation/WhisperDictation-Bridging-Header.h \
