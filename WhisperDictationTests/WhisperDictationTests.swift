@@ -896,3 +896,31 @@ final class HotkeyOwnEventTests: XCTestCase {
         XCTAssertFalse(HotkeyMonitor.isOwnEvent(sourcePID: Int64(getpid()) + 1))  // another app
     }
 }
+
+// MARK: - HotkeyMonitor sided modifier state
+
+/// A sided modifier hotkey (e.g. Right Option) must read its OWN side: releasing
+/// it while the other side is held still carries the generic mask, which used to
+/// leave push-to-talk stuck in .recording.
+final class HotkeyModifierPressedTests: XCTestCase {
+    private func flags(_ generic: CGEventFlags, device: UInt64 = 0) -> CGEventFlags {
+        CGEventFlags(rawValue: generic.rawValue | device)
+    }
+
+    func testSidedModifierUsesItsOwnDeviceBit() {
+        // Right Option (61): device bit 0x40; Left Option device bit 0x20.
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x40)))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x60)))
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: flags(.maskAlternate, device: 0x20)))  // only Left held
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 59, flags: flags(.maskControl, device: 0x2000)))  // Left Ctrl hotkey, Right held
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 54, flags: flags(.maskCommand, device: 0x10)))
+        XCTAssertFalse(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: []))
+    }
+
+    func testFallsBackToGenericMaskWithoutDeviceBits() {
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 61, flags: .maskAlternate))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 56, flags: .maskShift))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 57, flags: .maskAlphaShift))
+        XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 63, flags: .maskSecondaryFn))
+    }
+}
