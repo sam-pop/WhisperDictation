@@ -18,8 +18,14 @@ final class AudioCapture {
     /// Optional live-mode hook: each converted 16 kHz mono Float32 batch,
     /// invoked on the tap thread. The receiver must hop off this thread
     /// immediately (VADSegmenter.append does). Cleared by the engine when a
-    /// live session ends.
-    var onSamples: (([Float]) -> Void)?
+    /// live session ends. Written on main while the tap thread reads it, so both
+    /// sides go through `bufferLock` (a closure is two words; a torn read could
+    /// invoke a released context).
+    var onSamples: (([Float]) -> Void)? {
+        get { bufferLock.lock(); defer { bufferLock.unlock() }; return _onSamples }
+        set { bufferLock.lock(); _onSamples = newValue; bufferLock.unlock() }
+    }
+    private var _onSamples: (([Float]) -> Void)?
     private var configObserver: NSObjectProtocol?
 
     private static let sampleRate: Double = 16000
@@ -141,8 +147,9 @@ final class AudioCapture {
                 let previousCount = self.audioBuffer.count
                 self.audioBuffer.append(contentsOf: samples)
                 let crossedCap = Self.crossesDurationCap(previousCount: previousCount, newCount: self.audioBuffer.count)
+                let sink = self._onSamples   // read under the lock; called outside it
                 self.bufferLock.unlock()
-                self.onSamples?(samples)
+                sink?(samples)
                 #if DEBUG
                 fputs("+", stderr) // successful conversion (DEBUG only)
                 #endif
