@@ -37,4 +37,15 @@ final class LiveSessionDecisionTests: XCTestCase {
             XCTAssertFalse(DictationEngine.needsTerminalPeriod(committed: text), text)
         }
     }
+
+    /// The error shown after a live drain: a decode failure wins; committed text
+    /// clears transient status (the 5-minute-cap note, as in batch) but NOT a
+    /// forced stop's reason ("Audio input changed"), which used to be erased.
+    func testLiveFinishErrorKeepsForcedStopReason() {
+        let reason = "Audio input changed. Recording stopped."
+        XCTAssertEqual(DictationEngine.liveFinishError(surfaced: "boom", stopReason: reason, committed: "hi", current: reason), "boom")
+        XCTAssertEqual(DictationEngine.liveFinishError(surfaced: nil, stopReason: reason, committed: "hi", current: reason), reason)
+        XCTAssertNil(DictationEngine.liveFinishError(surfaced: nil, stopReason: nil, committed: "hi", current: "Reached the limit."))
+        XCTAssertEqual(DictationEngine.liveFinishError(surfaced: nil, stopReason: nil, committed: "", current: "Reached the limit."), "Reached the limit.")
+    }
 }
