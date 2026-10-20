@@ -443,9 +443,10 @@ final class DictationEngine {
             let collected = TranscriptCollector()
             do {
                 _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                    let corrected = TextCorrector.shared.correct(segment)
                     // Never log transcribed content — it's the user's private dictation.
-                    injector.type(text: collected.joinAndAppend(corrected))
+                    if let piece = Self.joinCorrectedSegment(segment, into: collected) {
+                        injector.type(text: piece)
+                    }
                 }
             } catch let error as WhisperError where error.isCancellation {
                 // User-intended cancel: reset to idle without surfacing an error.
@@ -459,7 +460,12 @@ final class DictationEngine {
                 return
             }
 
-            await finish(transcript: collected.text, error: nil)
+            var transcript = collected.text
+            if Self.needsBatchTerminalPeriod(committed: transcript, grammarEnabled: AppSettings.shared.grammarCorrectionEnabled) {
+                injector.type(text: ".")
+                transcript += "."
+            }
+            await finish(transcript: transcript, error: nil)
         }
     }
 
@@ -490,6 +496,27 @@ final class DictationEngine {
     static func needsTerminalPeriod(committed: String) -> Bool {
         guard let last = committed.last else { return false }
         return !TextCorrector.noPeriodAfter.contains(last) && !last.isNumber
+    }
+
+    /// Correct one streamed whisper segment in the context of what's already
+    /// collected (capitalize only at a sentence start, never auto-terminate: a
+    /// segment boundary is not a sentence end) and append it. Returns the piece
+    /// to type, or nil if correction left nothing. Shared by live and batch.
+    static func joinCorrectedSegment(_ segment: String, into collected: TranscriptCollector) -> String? {
+        let context = CorrectionContext(
+            atSentenceStart: collected.atSentenceStart,
+            appendPeriod: false   // termination is the stop-time rule
+        )
+        let corrected = TextCorrector.shared.correct(segment, context: context)
+        guard !corrected.isEmpty else { return nil }
+        return collected.joinAndAppend(corrected)
+    }
+
+    /// Batch stop-time termination: the one period `.standalone` correction would
+    /// have appended to the whole dictation (grammar on, over 3 characters, same
+    /// no-period set), so single-segment output is unchanged.
+    static func needsBatchTerminalPeriod(committed: String, grammarEnabled: Bool) -> Bool {
+        grammarEnabled && committed.count > 3 && needsTerminalPeriod(committed: committed)
     }
 
     /// The error to show once a live session's drain finishes. A decode failure
@@ -587,13 +614,9 @@ final class DictationEngine {
                         cancelFlag: sessionFlag,
                         vad: isResidual   // chunks are pre-trimmed; residual is raw
                     ) { segment in
-                        let context = CorrectionContext(
-                            atSentenceStart: collected.atSentenceStart,
-                            appendPeriod: false   // termination is the stop-time rule
-                        )
-                        let corrected = TextCorrector.shared.correct(segment, context: context)
-                        guard !corrected.isEmpty else { return }
-                        injector.type(text: collected.joinAndAppend(corrected))
+                        if let piece = Self.joinCorrectedSegment(segment, into: collected) {
+                            injector.type(text: piece)
+                        }
                     }
                 } catch let error as WhisperError where error.isCancellation {
                     continue   // silent: user cancel, or cascade after a failure
