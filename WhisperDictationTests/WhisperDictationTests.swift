@@ -969,3 +969,50 @@ final class DecodeThreadCountTests: XCTestCase {
         XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 1, appleSilicon: true), 1)
     }
 }
+
+// MARK: - Input device resolution
+
+/// The capture engine always gets an explicit input device. Leaving it unset
+/// ("System Default") made AVAudioEngine start input and output as one IO unit:
+/// with a stalled default output (a sleeping DisplayPort monitor) engine.start()
+/// hung ~10 s and failed, while the same mic set explicitly started in ~0.25 s.
+final class InputDeviceResolutionTests: XCTestCase {
+    private let devices = [
+        AudioInputDevice(id: 130, uid: "brio", name: "Logitech BRIO"),
+        AudioInputDevice(id: 84, uid: "teams", name: "Microsoft Teams Audio"),
+    ]
+
+    func testSelectedDeviceWins() {
+        XCTAssertEqual(AudioDeviceManager.resolveInputDevice(selectedUID: "teams", devices: devices, systemDefault: 130), 84)
+    }
+
+    func testSystemDefaultIsSetExplicitly() {
+        XCTAssertEqual(AudioDeviceManager.resolveInputDevice(selectedUID: nil, devices: devices, systemDefault: 130), 130)
+    }
+
+    func testUnpluggedSelectionFallsBackToSystemDefault() {
+        XCTAssertEqual(AudioDeviceManager.resolveInputDevice(selectedUID: "gone", devices: devices, systemDefault: 130), 130)
+    }
+
+    func testNoDefaultLeavesEngineAlone() {
+        XCTAssertNil(AudioDeviceManager.resolveInputDevice(selectedUID: nil, devices: devices, systemDefault: nil))
+    }
+}
+
+// MARK: - SoundFeedback
+
+/// Feedback sounds go through System Sound Services, which hands playback to the
+/// system sound server and returns at once. NSSound.play() blocked the main thread
+/// forever when the default output device stalled (a sleeping DisplayPort monitor),
+/// beach-balling the app on the hotkey. The stall itself needs real hardware; this
+/// checks every sound resolves to a system file and registers as a system sound.
+final class SoundFeedbackTests: XCTestCase {
+    func testEverySoundRegistersAsASystemSound() {
+        for name in SoundFeedback.soundNames {
+            let url = SoundFeedback.systemSoundURL(name)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), url.path)
+        }
+        let feedback = SoundFeedback()
+        XCTAssertEqual(feedback.registeredSoundCount, SoundFeedback.soundNames.count)
+    }
+}

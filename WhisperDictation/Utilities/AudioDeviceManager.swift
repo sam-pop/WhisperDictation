@@ -30,9 +30,17 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
     }
 
     /// Set the selected device on a specific AVAudioEngine's input node (per-engine, not system-wide)
+    /// ALWAYS sets an explicit device, resolving "System Default" (or an unplugged
+    /// selection) to the current default input. Left unset, AVAudioEngine starts
+    /// input and output as one IO unit, so a stalled default output (a sleeping
+    /// DisplayPort monitor) hung engine.start() ~10 s and failed it; the same mic
+    /// set explicitly started in ~0.25 s.
     func applySelectedDevice(to engine: AVAudioEngine) {
-        guard let uid = AppSettings.shared.selectedAudioDeviceUID else { return }
-        guard let device = inputDevices.first(where: { $0.uid == uid }) else { return }
+        guard var deviceID = Self.resolveInputDevice(
+            selectedUID: AppSettings.shared.selectedAudioDeviceUID,
+            devices: inputDevices,
+            systemDefault: Self.systemDefaultInputDevice()
+        ) else { return }
 
         let inputNode = engine.inputNode
         guard let audioUnit = inputNode.audioUnit else {
@@ -40,7 +48,6 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
             return
         }
 
-        var deviceID = device.id
         let status = AudioUnitSetProperty(
             audioUnit,
             kAudioOutputUnitProperty_CurrentDevice,
@@ -50,8 +57,28 @@ final class AudioDeviceManager: ObservableObject, @unchecked Sendable {
             UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         if status != noErr {
-            fputs("[AudioDeviceManager] Failed to set device \(device.name): \(status)\n", stderr)
+            fputs("[AudioDeviceManager] Failed to set input device \(deviceID): \(status)\n", stderr)
         }
+    }
+
+    /// The selected device if it's still present, otherwise the system default.
+    static func resolveInputDevice(selectedUID: String?, devices: [AudioInputDevice], systemDefault: AudioDeviceID?) -> AudioDeviceID? {
+        if let selectedUID, let device = devices.first(where: { $0.uid == selectedUID }) {
+            return device.id
+        }
+        return systemDefault
+    }
+
+    private static func systemDefaultInputDevice() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return status == noErr && deviceID != kAudioObjectUnknown ? deviceID : nil
     }
 
     // MARK: - List Devices
