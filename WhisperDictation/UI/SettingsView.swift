@@ -35,7 +35,7 @@ struct SettingsView: View {
             Divider()
             detailPane
         }
-        .frame(width: 620, height: 460)
+        .frame(minWidth: 620, idealWidth: 620, minHeight: 460, idealHeight: 460)
         .background(colorScheme == .dark ? Color(.windowBackgroundColor) : Color(.controlBackgroundColor).opacity(0.3))
     }
 
@@ -484,6 +484,7 @@ private struct ModelSection: View {
     @ObservedObject var modelManager: ModelManager
     let engine: DictationEngine
     let colorScheme: ColorScheme
+    @State private var pendingDeletion: ModelManager.ModelInfo?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -556,6 +557,22 @@ private struct ModelSection: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Delete \(pendingDeletion?.name ?? "model")?",
+            isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }),
+            presenting: pendingDeletion
+        ) { model in
+            Button("Delete", role: .destructive) {
+                do {
+                    try modelManager.deleteModel(model)
+                    modelManager.downloadError = nil
+                } catch {
+                    modelManager.downloadError = "Couldn’t delete \(model.name): \(error.localizedDescription)"
+                }
+            }
+        } message: { model in
+            Text("This frees \(model.size) on disk. You can download it again later.")
+        }
     }
 
     @ViewBuilder
@@ -621,6 +638,16 @@ private struct ModelSection: View {
                             .foregroundStyle(.green)
                             .font(.system(size: 18))
                     }
+                    Button {
+                        pendingDeletion = model
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isSelected)
+                    .help(isSelected ? "Activate another model to delete this one" : "Delete from disk")
+                    .accessibilityLabel("Delete \(model.name)")
                 } else if modelManager.isDownloading(model) {
                     downloadingControls(for: model)
                 } else {

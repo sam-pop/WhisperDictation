@@ -305,6 +305,20 @@ final class ModelManagerTests: XCTestCase {
         XCTAssertEqual(try ModelManager.sha256Hex(ofFileAt: url), expected)
     }
 
+    /// The active model is never deletable (it would leave the engine with no model);
+    /// every other model is. Pure check — never touches the real Models directory.
+    func testOnlyInactiveModelsAreDeletable() {
+        for active in ModelManager.ModelInfo.all {
+            for model in ModelManager.ModelInfo.all {
+                XCTAssertEqual(
+                    ModelManager.isDeletable(model, selectedModel: active.settingsId),
+                    model.fileName != active.fileName,
+                    "\(model.fileName) with active \(active.settingsId)"
+                )
+            }
+        }
+    }
+
     /// Streaming hash of a multi-chunk (>1 MB) file must match a one-shot hash of
     /// the same bytes — proves the chunked read covers the whole file with no
     /// dropped/overlapping bytes at chunk boundaries.
