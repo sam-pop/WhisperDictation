@@ -243,19 +243,20 @@ final class DictationEngine {
         }
     }
 
-    /// Ask the active bridge to abort the running decode. The `transcribe` call then
-    /// throws `WhisperError.cancelled`, which the transcription task treats as a silent
-    /// reset to idle (no error surfaced). Already-typed segments remain.
+    /// Abort the running decode by flipping the flag it polls (`drainCancelFlag`). The
+    /// `transcribe` call then throws `WhisperError.cancelled`, which the transcription
+    /// task treats as a silent reset to idle (no error surfaced). Already-typed segments
+    /// remain.
     ///
-    /// A live session draining after stop cancels differently: it flips its own shared
-    /// session flag, which every queued chunk decode polls. `bridge.cancelTranscription()`
+    /// The flag is the engine's own, not the bridge's: for a live drain it is the shared
+    /// session flag every queued chunk decode polls. `bridge.cancelTranscription()`
     /// would be wrong there — its single-flight `activeCancelFlag` is overwritten as each
     /// queued call enters and cleared as each finishes, so it can target the wrong decode
     /// (or none at all).
     private func cancelTranscription() {
         fputs("[DictationEngine] Cancel requested during \(state.rawValue).\n", stderr)
-        if let liveFlagForDrain = drainCancelFlag {
-            liveFlagForDrain.cancel()
+        if let flag = drainCancelFlag {
+            flag.cancel()
         } else {
             whisperBridge?.cancelTranscription()
         }
@@ -399,6 +400,10 @@ final class DictationEngine {
         }
 
         state = .processing
+        // Installed before the task starts, so a cancel landing before the decode
+        // reaches the bridge isn't a silent no-op. Cleared in returnToIdle().
+        let cancelFlag = CancellationFlag()
+        drainCancelFlag = cancelFlag
 
         let bridge = self.whisperBridge
         let prompt = Self.buildPrompt(
@@ -442,7 +447,7 @@ final class DictationEngine {
             // happens-after all writes — so @unchecked Sendable is sound.
             let collected = TranscriptCollector()
             do {
-                _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
+                _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt, cancelFlag: cancelFlag) { segment in
                     // Never log transcribed content — it's the user's private dictation.
                     if let piece = Self.joinCorrectedSegment(segment, into: collected) {
                         injector.type(text: piece)
@@ -531,9 +536,10 @@ final class DictationEngine {
     private var liveContinuation: AsyncStream<LiveWorkItem>.Continuation?
     private var liveSessionFlag: CancellationFlag?
 
-    /// The session flag kept alive for the drain phase (stop → consumer finish),
-    /// after the main-actor session references are cleared. This is what a cancel
-    /// during .processing/.typing flips. Cleared in `returnToIdle()`.
+    /// What a cancel during .processing/.typing flips: a live session's flag, kept
+    /// alive for the drain phase (stop → consumer finish) after the main-actor
+    /// session references are cleared, or a batch decode's own flag. Cleared in
+    /// `returnToIdle()`.
     private var drainCancelFlag: CancellationFlag?
 
     private var isLiveSession: Bool { liveSegmenter != nil }
