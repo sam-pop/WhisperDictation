@@ -494,8 +494,7 @@ final class DictationEngine {
     private var isLiveSession: Bool { liveSegmenter != nil }
 
     /// Engine-side guard (evaluated per session): the setting stores intent;
-    /// live runs only when the VAD model is actually on disk, resolved fresh
-    /// (WhisperBridge's cached copy from its own init must not be reused).
+    /// live runs only when the VAD model is actually on disk, resolved fresh.
     private func startLiveSessionIfEnabled() -> Bool {
         guard AppSettings.shared.liveDictationEnabled,
               let vadPath = ModelManager.shared.vadModelPath(),
