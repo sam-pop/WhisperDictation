@@ -881,3 +881,16 @@ final class HotkeyNonModifierDecisionTests: XCTestCase {
         XCTAssertEqual(HotkeyMonitor.nonModifierDecision(isKeyDown: false, isHeld: false), .passThrough)
     }
 }
+
+// MARK: - HotkeyMonitor own-event pass-through
+
+/// TextInjector posts its typing as virtualKey 0 (the A key). With an "A" hotkey
+/// those events must never be read as the hotkey, so anything our own process
+/// posted passes straight through.
+final class HotkeyOwnEventTests: XCTestCase {
+    func testOnlyOurOwnPidIsTreatedAsSelfInjected() {
+        XCTAssertTrue(HotkeyMonitor.isOwnEvent(sourcePID: Int64(getpid())))
+        XCTAssertFalse(HotkeyMonitor.isOwnEvent(sourcePID: 0))                    // hardware
+        XCTAssertFalse(HotkeyMonitor.isOwnEvent(sourcePID: Int64(getpid()) + 1))  // another app
+    }
+}
