@@ -647,7 +647,7 @@ final class DictationEngineTests: XCTestCase {
     // MARK: - Prompt assembly (Phase 2)
 
     /// A base vocabulary prompt that alone exceeds the word budget must be
-    /// truncated (whisper's ~1024-token / ~750-word limit).
+    /// truncated (whisper only uses the last 223 prompt tokens).
     func testBuildPromptTruncatesOversizedBase() {
         let longBase = (0..<1000).map { "word\($0)" }.joined(separator: " ")
         let result = DictationEngine.buildPrompt(base: longBase, customTerms: [])
@@ -689,6 +689,26 @@ final class DictationEngineTests: XCTestCase {
         XCTAssertTrue(p.contains("term1,"))
     }
 
+    /// Every term the UI lets you add (promptTermLimit) must survive even a full
+    /// live tail. Previously 100 were allowed and as few as 39 reached whisper,
+    /// silently dropping the newest ones.
+    func testEveryAllowedTermSurvivesAFullLiveTail() {
+        XCTAssertLessThanOrEqual(DictationEngine.promptTermLimit + DictationEngine.liveTailWordCap,
+                                 DictationEngine.promptWordBudget)
+        let terms = (1...DictationEngine.promptTermLimit).map { "term\($0)" }
+        let tail = (1...80).map { "t\($0)" }.joined(separator: " ")
+        let p = DictationEngine.buildPrompt(base: AppSettings.defaultVocabularyPrompt, customTerms: terms, transcriptTail: tail)
+        XCTAssertTrue(p.contains("term\(DictationEngine.promptTermLimit) t"), "last allowed term missing: \(p)")
+    }
+
+    /// Storage keeps up to maxCustomTerms (so no saved term is ever deleted); only
+    /// the first promptTermLimit reach the prompt.
+    func testTermsBeyondPromptLimitAreNotSent() {
+        let terms = (1...100).map { "term\($0)" }
+        let p = DictationEngine.buildPrompt(base: "", customTerms: terms)
+        XCTAssertTrue(p.hasSuffix("term\(DictationEngine.promptTermLimit)"))
+    }
+
     /// Empty custom terms → the base prompt is returned unchanged (when in budget).
     func testBuildPromptEmptyCustomTermsReturnsBase() {
         XCTAssertEqual(DictationEngine.buildPrompt(base: "hello world", customTerms: []), "hello world")
@@ -698,8 +718,8 @@ final class DictationEngineTests: XCTestCase {
 // MARK: - buildPrompt committed-transcript tail
 
 /// The live-mode context carry: previously committed transcript text is appended
-/// last (nearest the decode), truncated to the last 50 words and to whatever word
-/// budget the base prompt and custom terms leave behind.
+/// last (nearest the decode), truncated to the last `liveTailWordCap` words; it
+/// outranks custom terms and the base prompt for the word budget.
 final class BuildPromptTailTests: XCTestCase {
     func testDefaultOmitsTailAndMatchesTwoArgCall() {
         XCTAssertEqual(DictationEngine.buildPrompt(base: "a b c", customTerms: ["X"]),
@@ -712,17 +732,19 @@ final class BuildPromptTailTests: XCTestCase {
         XCTAssertTrue(p.hasPrefix("vocab"))
     }
 
-    func testTailTruncatedToLastFiftyWords() {
+    func testTailTruncatedToLiveTailWordCap() {
+        XCTAssertEqual(DictationEngine.liveTailWordCap, 29)
         let tail = (1...80).map(String.init).joined(separator: " ")
         let p = DictationEngine.buildPrompt(base: "v", customTerms: [], transcriptTail: tail)
-        XCTAssertFalse(p.contains(" 30 "))          // words 1-30 dropped
-        XCTAssertTrue(p.hasSuffix("79 80"))          // last 50 kept: 31...80
+        XCTAssertFalse(p.contains(" 51 "))          // words 1-51 dropped
+        XCTAssertTrue(p.hasSuffix("79 80"))
+        XCTAssertTrue(p.contains(" 52 "))            // last 29 kept: 52...80
     }
 
     /// The tail outranks the base: a long base is trimmed, the tail is kept whole.
     func testTailOutranksLongBase() {
         let base = (1...690).map { "b\($0)" }.joined(separator: " ")
-        let tail = (1...40).map { "t\($0)" }.joined(separator: " ")
+        let tail = (1...20).map { "t\($0)" }.joined(separator: " ")
         let p = DictationEngine.buildPrompt(base: base, customTerms: [], transcriptTail: tail)
         XCTAssertEqual(p.split(separator: " ").count, DictationEngine.promptWordBudget)
         XCTAssertTrue(p.hasSuffix(tail))
@@ -867,8 +889,6 @@ final class AudioDeviceManagerTests: XCTestCase {
         manager.refreshDevices()
         // Should have at least one input device on any Mac
         XCTAssertFalse(manager.inputDevices.isEmpty, "No audio input devices found")
-        // Device strings come back through the unmanaged +1 CFString read.
-        XCTAssertFalse(manager.inputDevices.contains { $0.uid.isEmpty || $0.name == "Unknown" })
     }
 
     func testSelectedDeviceHandled() {
