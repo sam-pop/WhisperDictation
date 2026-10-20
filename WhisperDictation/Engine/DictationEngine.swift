@@ -461,6 +461,9 @@ final class DictationEngine {
     private enum LiveWorkItem {
         case chunk([Float])
         case residual([Float])
+        /// Why the session was force-stopped. Recorded by the consumer and
+        /// re-surfaced after the drain instead of being cleared by its success.
+        case stopReason(String)
     }
 
     /// Residual minimum is SAMPLE COUNT (≈0.3 s @16 kHz) — the wall-clock
@@ -480,6 +483,14 @@ final class DictationEngine {
     static func needsTerminalPeriod(committed: String) -> Bool {
         guard let last = committed.last else { return false }
         return !TextCorrector.noPeriodAfter.contains(last) && !last.isNumber
+    }
+
+    /// The error to show once a live session's drain finishes. A decode failure
+    /// wins; committed text clears transient status (the 5-minute-cap note, as in
+    /// batch) but not a forced stop's reason, which the user must still see.
+    static func liveFinishError(surfaced: String?, stopReason: String?, committed: String, current: String?) -> String? {
+        if let surfaced { return surfaced }
+        return committed.isEmpty ? current : stopReason
     }
 
     private var liveSegmenter: VADSegmenter?
@@ -543,15 +554,17 @@ final class DictationEngine {
 
         Task.detached(priority: .userInitiated) { [weak self] in
             var surfacedError: String?
+            var stopReason: String?
 
             for await item in stream {
-                if sessionFlag.isCancelled && surfacedError == nil {
-                    continue   // user cancel during drain: skip remaining work silently
-                }
                 let (samples, isResidual): ([Float], Bool)
                 switch item {
                 case .chunk(let s): (samples, isResidual) = (s, false)
                 case .residual(let s): (samples, isResidual) = (s, true)
+                case .stopReason(let reason): stopReason = reason; continue
+                }
+                if sessionFlag.isCancelled && surfacedError == nil {
+                    continue   // user cancel during drain: skip remaining work silently
                 }
                 guard surfacedError == nil else { continue }  // failure: drain and discard
 
@@ -591,16 +604,18 @@ final class DictationEngine {
             injector.flush()
 
             let finalError = surfacedError
+            let finalStopReason = stopReason
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let finalError {
-                    self.transcriptionError = finalError
-                } else if !collected.text.isEmpty {
+                if finalError == nil, !collected.text.isEmpty {
                     var transcript = collected.text
                     if Self.needsTerminalPeriod(committed: transcript) { transcript += "." }
                     self.lastTranscription = transcript
-                    self.transcriptionError = nil
                 }
+                self.transcriptionError = Self.liveFinishError(
+                    surfaced: finalError, stopReason: finalStopReason,
+                    committed: collected.text, current: self.transcriptionError
+                )
                 feedback.playDoneSound()
                 self.returnToIdle()
             }
@@ -707,8 +722,10 @@ final class DictationEngine {
                 self.soundFeedback.playStopSound()
                 self.recordingStartTime = nil
                 self.state = .processing        // consumer's finish returns to idle
+                let reason = "Audio input changed. Recording stopped."
+                self.liveContinuation?.yield(.stopReason(reason))   // survives the consumer's finish
                 self.teardownLiveSession()      // residual discarded; committed text remains
-                self.transcriptionError = "Audio input changed. Recording stopped."
+                self.transcriptionError = reason
                 return
             }
             fputs("[DictationEngine] Audio input configuration changed during recording — stopping.\n", stderr)
