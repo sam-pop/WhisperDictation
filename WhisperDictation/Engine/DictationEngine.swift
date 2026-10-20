@@ -96,13 +96,22 @@ final class DictationEngine {
 
     // MARK: - Model Loading
 
+    /// Bumped by every load. Only the newest load may install its bridge or report
+    /// an error: overlapping loads (quick model switches) otherwise finish in any
+    /// order, and the last to finish — possibly the older selection — would win.
+    /// Main-actor only.
+    private var modelLoadGeneration = 0
+
     private func loadModelAsync() {
+        modelLoadGeneration += 1
+        let generation = modelLoadGeneration
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             do {
                 let modelPath = ModelManager.shared.activeModelPath()
                 guard let modelPath else {
                     await MainActor.run {
+                        guard generation == self.modelLoadGeneration else { return }
                         self.modelLoadError = "No model found. Open Settings to download a model."
                     }
                     return
@@ -114,12 +123,15 @@ final class DictationEngine {
                 await bridge.warmup()
 
                 await MainActor.run {
+                    // Superseded: drop this bridge (freed by deinit; idle, no users).
+                    guard generation == self.modelLoadGeneration else { return }
                     self.whisperBridge = bridge
                     self.isModelLoaded = true
                     self.modelLoadError = nil
                 }
             } catch {
                 await MainActor.run {
+                    guard generation == self.modelLoadGeneration else { return }
                     self.modelLoadError = "Failed to load model: \(error.localizedDescription)"
                 }
             }
@@ -231,19 +243,20 @@ final class DictationEngine {
         }
     }
 
-    /// Ask the active bridge to abort the running decode. The `transcribe` call then
-    /// throws `WhisperError.cancelled`, which the transcription task treats as a silent
-    /// reset to idle (no error surfaced). Already-typed segments remain.
+    /// Abort the running decode by flipping the flag it polls (`drainCancelFlag`). The
+    /// `transcribe` call then throws `WhisperError.cancelled`, which the transcription
+    /// task treats as a silent reset to idle (no error surfaced). Already-typed segments
+    /// remain.
     ///
-    /// A live session draining after stop cancels differently: it flips its own shared
-    /// session flag, which every queued chunk decode polls. `bridge.cancelTranscription()`
+    /// The flag is the engine's own, not the bridge's: for a live drain it is the shared
+    /// session flag every queued chunk decode polls. `bridge.cancelTranscription()`
     /// would be wrong there — its single-flight `activeCancelFlag` is overwritten as each
     /// queued call enters and cleared as each finishes, so it can target the wrong decode
     /// (or none at all).
     private func cancelTranscription() {
         fputs("[DictationEngine] Cancel requested during \(state.rawValue).\n", stderr)
-        if let liveFlagForDrain = drainCancelFlag {
-            liveFlagForDrain.cancel()
+        if let flag = drainCancelFlag {
+            flag.cancel()
         } else {
             whisperBridge?.cancelTranscription()
         }
@@ -294,39 +307,47 @@ final class DictationEngine {
 
     // MARK: - Prompt Assembly
 
-    /// Whisper's initial_prompt is capped at ~1024 tokens (~750 words). Exceeding it
-    /// triggers `whisper_tokenize: too many resulting tokens` and degrades accuracy
-    /// (see CLAUDE.md). We budget 700 words as a safe margin.
-    static let promptWordBudget = 700
+    /// whisper.cpp uses only the LAST `n_text_ctx/2 - 1` = 223 tokens of the prompt
+    /// and silently drops the rest from the front. The default vocabulary prompt
+    /// measures 2.48 tokens/word (1373 tokens / 553 words), so 89 words fit.
+    static let promptWordBudget = 89
+    /// Live-mode context carried into each chunk's prompt.
+    static let liveTailWordCap = 29
+    /// Custom terms that reach the prompt — all of them, even with a full live tail.
+    /// The Vocabulary UI caps additions here; stored lists may hold more (never
+    /// truncated) but only the first `promptTermLimit` are sent.
+    static let promptTermLimit = promptWordBudget - liveTailWordCap
 
-    /// Builds the whisper initial_prompt from the base vocabulary prompt plus the
-    /// user's custom terms, staying within `promptWordBudget` words. The base prompt
-    /// is truncated first if it alone exceeds the budget; custom terms then fill any
-    /// remaining word budget. Pure/static so it is unit-testable without the engine.
+    /// Builds the whisper initial_prompt within `promptWordBudget` words, filled by
+    /// priority: committed-transcript tail (≤ liveTailWordCap), then custom terms,
+    /// then the base vocabulary prompt from its start. Output order is base, terms,
+    /// tail — lowest priority at the front, which is what whisper drops if the
+    /// words→tokens estimate overshoots. Pure/static so it is unit-testable.
     ///
     /// - Parameter transcriptTail: text already committed in this dictation, used by
     ///   live mode so each chunk decodes with the preceding words as context. Empty
-    ///   (the default) leaves the prompt byte-identical to the non-live build.
+    ///   (the default) gives the same prompt as the non-live path.
     static func buildPrompt(base: String, customTerms: [String], transcriptTail: String = "") -> String {
+        let tailWords = transcriptTail.split(separator: " ").suffix(liveTailWordCap)
+        var remaining = promptWordBudget - tailWords.count
+
+        // Terms keep their historical one-unit-each accounting.
+        let termsToAdd = customTerms.prefix(min(remaining, promptTermLimit))
+        remaining -= termsToAdd.count
+
         let baseWords = base.split(separator: " ")
-        let cappedBase = baseWords.count > promptWordBudget
-            ? baseWords.prefix(promptWordBudget).joined(separator: " ")
+        let cappedBase = baseWords.count > remaining
+            ? baseWords.prefix(remaining).joined(separator: " ")
             : base
 
-        let termBudget = max(0, promptWordBudget - baseWords.count)
-        let termsToAdd = Array(customTerms.prefix(termBudget))
-        let withTerms = termsToAdd.isEmpty
-            ? cappedBase
-            : cappedBase + ", " + termsToAdd.joined(separator: ", ")
-
-        // Committed-transcript tail: budgeted by ACTUAL word count (terms above
-        // deliberately keep their historical one-unit-each accounting), capped
-        // at 50 words, appended last — closest to the decode.
-        let tailWords = transcriptTail.split(separator: " ")
-        let usedWords = min(baseWords.count, promptWordBudget) + termsToAdd.count
-        let tailBudget = min(50, max(0, promptWordBudget - usedWords))
-        guard tailBudget > 0, !tailWords.isEmpty else { return withTerms }
-        return withTerms + " " + tailWords.suffix(tailBudget).joined(separator: " ")
+        var prompt = cappedBase
+        if !termsToAdd.isEmpty {
+            prompt += (prompt.isEmpty ? "" : ", ") + termsToAdd.joined(separator: ", ")
+        }
+        if !tailWords.isEmpty {
+            prompt += (prompt.isEmpty ? "" : " ") + tailWords.joined(separator: " ")
+        }
+        return prompt
     }
 
     // MARK: - Recording Flow
@@ -346,8 +367,16 @@ final class DictationEngine {
             try audioCapture.startRecording()
         } catch {
             fputs("[DictationEngine] Failed to start recording: \(error)\n", stderr)
-            teardownLiveSession()
-            state = .idle
+            transcriptionError = "Couldn’t start recording: \(error.localizedDescription)"
+            if live {
+                // The consumer's finish owns returnToIdle. Going idle here let a
+                // re-press queued behind this (blocking) start begin a new recording
+                // that the pending finish then flipped to idle with capture running.
+                state = .processing
+                teardownLiveSession()
+            } else {
+                returnToIdle()
+            }
         }
     }
 
@@ -378,6 +407,10 @@ final class DictationEngine {
         }
 
         state = .processing
+        // Installed before the task starts, so a cancel landing before the decode
+        // reaches the bridge isn't a silent no-op. Cleared in returnToIdle().
+        let cancelFlag = CancellationFlag()
+        drainCancelFlag = cancelFlag
 
         let bridge = self.whisperBridge
         let prompt = Self.buildPrompt(
@@ -421,10 +454,11 @@ final class DictationEngine {
             // happens-after all writes — so @unchecked Sendable is sound.
             let collected = TranscriptCollector()
             do {
-                _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt) { segment in
-                    let corrected = TextCorrector.shared.correct(segment)
+                _ = try await bridge.transcribe(audioBuffer: audioBuffer, prompt: prompt, cancelFlag: cancelFlag) { segment in
                     // Never log transcribed content — it's the user's private dictation.
-                    injector.type(text: collected.joinAndAppend(corrected))
+                    if let piece = Self.joinCorrectedSegment(segment, into: collected) {
+                        injector.type(text: piece)
+                    }
                 }
             } catch let error as WhisperError where error.isCancellation {
                 // User-intended cancel: reset to idle without surfacing an error.
@@ -438,7 +472,12 @@ final class DictationEngine {
                 return
             }
 
-            await finish(transcript: collected.text, error: nil)
+            var transcript = collected.text
+            if Self.needsBatchTerminalPeriod(committed: transcript, grammarEnabled: AppSettings.shared.grammarCorrectionEnabled) {
+                injector.type(text: ".")
+                transcript += "."
+            }
+            await finish(transcript: transcript, error: nil)
         }
     }
 
@@ -447,6 +486,9 @@ final class DictationEngine {
     private enum LiveWorkItem {
         case chunk([Float])
         case residual([Float])
+        /// Why the session was force-stopped. Recorded by the consumer and
+        /// re-surfaced after the drain instead of being cleared by its success.
+        case stopReason(String)
     }
 
     /// Residual minimum is SAMPLE COUNT (≈0.3 s @16 kHz) — the wall-clock
@@ -465,23 +507,52 @@ final class DictationEngine {
     /// intermediate chunk).
     static func needsTerminalPeriod(committed: String) -> Bool {
         guard let last = committed.last else { return false }
-        return !".!?".contains(last)
+        return !TextCorrector.noPeriodAfter.contains(last) && !last.isNumber
+    }
+
+    /// Correct one streamed whisper segment in the context of what's already
+    /// collected (capitalize only at a sentence start, never auto-terminate: a
+    /// segment boundary is not a sentence end) and append it. Returns the piece
+    /// to type, or nil if correction left nothing. Shared by live and batch.
+    static func joinCorrectedSegment(_ segment: String, into collected: TranscriptCollector) -> String? {
+        let context = CorrectionContext(
+            atSentenceStart: collected.atSentenceStart,
+            appendPeriod: false   // termination is the stop-time rule
+        )
+        let corrected = TextCorrector.shared.correct(segment, context: context)
+        guard !corrected.isEmpty else { return nil }
+        return collected.joinAndAppend(corrected)
+    }
+
+    /// Batch stop-time termination: the one period `.standalone` correction would
+    /// have appended to the whole dictation (grammar on, over 3 characters, same
+    /// no-period set), so single-segment output is unchanged.
+    static func needsBatchTerminalPeriod(committed: String, grammarEnabled: Bool) -> Bool {
+        grammarEnabled && committed.count > 3 && needsTerminalPeriod(committed: committed)
+    }
+
+    /// The error to show once a live session's drain finishes. A decode failure
+    /// wins; committed text clears transient status (the 5-minute-cap note, as in
+    /// batch) but not a forced stop's reason, which the user must still see.
+    static func liveFinishError(surfaced: String?, stopReason: String?, committed: String, current: String?) -> String? {
+        if let surfaced { return surfaced }
+        return committed.isEmpty ? current : stopReason
     }
 
     private var liveSegmenter: VADSegmenter?
     private var liveContinuation: AsyncStream<LiveWorkItem>.Continuation?
     private var liveSessionFlag: CancellationFlag?
 
-    /// The session flag kept alive for the drain phase (stop → consumer finish),
-    /// after the main-actor session references are cleared. This is what a cancel
-    /// during .processing/.typing flips. Cleared in `returnToIdle()`.
+    /// What a cancel during .processing/.typing flips: a live session's flag, kept
+    /// alive for the drain phase (stop → consumer finish) after the main-actor
+    /// session references are cleared, or a batch decode's own flag. Cleared in
+    /// `returnToIdle()`.
     private var drainCancelFlag: CancellationFlag?
 
     private var isLiveSession: Bool { liveSegmenter != nil }
 
     /// Engine-side guard (evaluated per session): the setting stores intent;
-    /// live runs only when the VAD model is actually on disk, resolved fresh
-    /// (WhisperBridge's cached copy from its own init must not be reused).
+    /// live runs only when the VAD model is actually on disk, resolved fresh.
     private func startLiveSessionIfEnabled() -> Bool {
         guard AppSettings.shared.liveDictationEnabled,
               let vadPath = ModelManager.shared.vadModelPath(),
@@ -530,15 +601,17 @@ final class DictationEngine {
 
         Task.detached(priority: .userInitiated) { [weak self] in
             var surfacedError: String?
+            var stopReason: String?
 
             for await item in stream {
-                if sessionFlag.isCancelled && surfacedError == nil {
-                    continue   // user cancel during drain: skip remaining work silently
-                }
                 let (samples, isResidual): ([Float], Bool)
                 switch item {
                 case .chunk(let s): (samples, isResidual) = (s, false)
                 case .residual(let s): (samples, isResidual) = (s, true)
+                case .stopReason(let reason): stopReason = reason; continue
+                }
+                if sessionFlag.isCancelled && surfacedError == nil {
+                    continue   // user cancel during drain: skip remaining work silently
                 }
                 guard surfacedError == nil else { continue }  // failure: drain and discard
 
@@ -554,13 +627,9 @@ final class DictationEngine {
                         cancelFlag: sessionFlag,
                         vad: isResidual   // chunks are pre-trimmed; residual is raw
                     ) { segment in
-                        let context = CorrectionContext(
-                            atSentenceStart: collected.atSentenceStart,
-                            appendPeriod: false   // termination is the stop-time rule
-                        )
-                        let corrected = TextCorrector.shared.correct(segment, context: context)
-                        guard !corrected.isEmpty else { return }
-                        injector.type(text: collected.joinAndAppend(corrected))
+                        if let piece = Self.joinCorrectedSegment(segment, into: collected) {
+                            injector.type(text: piece)
+                        }
                     }
                 } catch let error as WhisperError where error.isCancellation {
                     continue   // silent: user cancel, or cascade after a failure
@@ -578,16 +647,18 @@ final class DictationEngine {
             injector.flush()
 
             let finalError = surfacedError
+            let finalStopReason = stopReason
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let finalError {
-                    self.transcriptionError = finalError
-                } else if !collected.text.isEmpty {
+                if finalError == nil, !collected.text.isEmpty {
                     var transcript = collected.text
                     if Self.needsTerminalPeriod(committed: transcript) { transcript += "." }
                     self.lastTranscription = transcript
-                    self.transcriptionError = nil
                 }
+                self.transcriptionError = Self.liveFinishError(
+                    surfaced: finalError, stopReason: finalStopReason,
+                    committed: collected.text, current: self.transcriptionError
+                )
                 feedback.playDoneSound()
                 self.returnToIdle()
             }
@@ -694,8 +765,10 @@ final class DictationEngine {
                 self.soundFeedback.playStopSound()
                 self.recordingStartTime = nil
                 self.state = .processing        // consumer's finish returns to idle
+                let reason = "Audio input changed. Recording stopped."
+                self.liveContinuation?.yield(.stopReason(reason))   // survives the consumer's finish
                 self.teardownLiveSession()      // residual discarded; committed text remains
-                self.transcriptionError = "Audio input changed. Recording stopped."
+                self.transcriptionError = reason
                 return
             }
             fputs("[DictationEngine] Audio input configuration changed during recording — stopping.\n", stderr)
@@ -727,8 +800,10 @@ final class TranscriptCollector: @unchecked Sendable {
     /// True when the next appended segment begins a sentence: nothing has
     /// been collected yet, or the collected text ends in terminal punctuation.
     var atSentenceStart: Bool {
-        guard let last = text.last else { return true }
-        return ".!?".contains(last)
+        guard !text.isEmpty else { return true }
+        // A sentence can end inside closing quotes/parens: `"stop."`, `(see above.)`.
+        let last = text.reversed().first { !"\"')".contains($0) }
+        return last.map { ".!?".contains($0) } ?? true
     }
 
     /// Returns `segment` as it should be typed — with a leading space when

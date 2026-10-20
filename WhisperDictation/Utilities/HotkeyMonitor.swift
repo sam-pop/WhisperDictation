@@ -116,13 +116,36 @@ final class HotkeyMonitor {
         }
     }
 
+    enum NonModifierDecision: Equatable { case press, release, swallow, passThrough }
+
+    /// What a key-down/up of a NON-modifier hotkey does. A held key autorepeats
+    /// key-downs; those are swallowed so they never reach the focused app.
+    static func nonModifierDecision(isKeyDown: Bool, isHeld: Bool) -> NonModifierDecision {
+        switch (isKeyDown, isHeld) {
+        case (true, false): return .press
+        case (true, true): return .swallow
+        case (false, true): return .release
+        case (false, false): return .passThrough
+        }
+    }
+
+    /// True for events our own process posted. TextInjector types as virtualKey 0
+    /// (the A key), so with an "A" hotkey our typing would otherwise be swallowed
+    /// as hotkey presses and cancel the transcription it belongs to.
+    static func isOwnEvent(sourcePID: Int64) -> Bool {
+        sourcePID == Int64(getpid())
+    }
+
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if Self.isOwnEvent(sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)) {
+            return Unmanaged.passRetained(event)
+        }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         if isModifierKey {
             if type == .flagsChanged && keyCode == monitoredKeyCode {
                 let flags = event.flags
-                let isPressed = isModifierPressed(flags)
+                let isPressed = Self.isModifierPressed(keyCode: Int(monitoredKeyCode), flags: flags)
                 os_unfair_lock_lock(lock)
                 let wasHeld = isKeyHeld
                 if isPressed && !wasHeld {
@@ -139,29 +162,50 @@ final class HotkeyMonitor {
                 os_unfair_lock_unlock(lock)
             }
         } else {
-            if keyCode == monitoredKeyCode {
+            if keyCode == monitoredKeyCode, type == .keyDown || type == .keyUp {
                 os_unfair_lock_lock(lock)
-                let wasHeld = isKeyHeld
-                if type == .keyDown && !wasHeld {
-                    isKeyHeld = true
-                    os_unfair_lock_unlock(lock)
-                    DispatchQueue.main.async { self.onKeyDown() }
-                    return nil
-                } else if type == .keyUp && wasHeld {
-                    isKeyHeld = false
-                    os_unfair_lock_unlock(lock)
-                    DispatchQueue.main.async { self.onKeyUp() }
-                    return nil
+                let decision = Self.nonModifierDecision(isKeyDown: type == .keyDown, isHeld: isKeyHeld)
+                switch decision {
+                case .press: isKeyHeld = true
+                case .release: isKeyHeld = false
+                case .swallow, .passThrough: break
                 }
                 os_unfair_lock_unlock(lock)
+                switch decision {
+                case .press:
+                    DispatchQueue.main.async { self.onKeyDown() }
+                    return nil
+                case .release:
+                    DispatchQueue.main.async { self.onKeyUp() }
+                    return nil
+                case .swallow:
+                    return nil
+                case .passThrough:
+                    break
+                }
             }
         }
 
         return Unmanaged.passRetained(event)
     }
 
-    private func isModifierPressed(_ flags: CGEventFlags) -> Bool {
-        let code = Int(monitoredKeyCode)
+    /// Device-dependent (sided) modifier bits, IOKit's NX_DEVICE*KEYMASK values:
+    /// this key's own bit, and both sides of its family.
+    private static let sidedModifierBits: [Int: (own: UInt64, family: UInt64)] = [
+        58: (0x20, 0x60), 61: (0x40, 0x60),        // L/R Option
+        59: (0x01, 0x2001), 62: (0x2000, 0x2001),  // L/R Control
+        56: (0x02, 0x06), 60: (0x04, 0x06),        // L/R Shift
+        55: (0x08, 0x18), 54: (0x10, 0x18),        // L/R Command
+    ]
+
+    /// Whether the modifier hotkey `keyCode` is down in a flagsChanged event.
+    /// Sided keys read their own device bit: the generic mask stays set while the
+    /// OTHER side is held, so releasing the hotkey then was never seen. Sources
+    /// that report no device bits for the family fall back to the generic mask.
+    static func isModifierPressed(keyCode code: Int, flags: CGEventFlags) -> Bool {
+        if let bits = sidedModifierBits[code], flags.rawValue & bits.family != 0 {
+            return flags.rawValue & bits.own != 0
+        }
         switch code {
         case 58, 61: return flags.contains(.maskAlternate)
         case 59, 62: return flags.contains(.maskControl)

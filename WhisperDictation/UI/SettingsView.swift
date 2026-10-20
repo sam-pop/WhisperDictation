@@ -35,7 +35,7 @@ struct SettingsView: View {
             Divider()
             detailPane
         }
-        .frame(width: 620, height: 460)
+        .frame(minWidth: 620, idealWidth: 620, minHeight: 460, idealHeight: 460)
         .background(colorScheme == .dark ? Color(.windowBackgroundColor) : Color(.controlBackgroundColor).opacity(0.3))
     }
 
@@ -224,7 +224,10 @@ private struct GeneralSection: View {
 
                 Picker("Mode", selection: $settings.hotkeyMode) {
                     Text("Push-to-talk").tag(AppSettings.HotkeyMode.pushToTalk)
-                    Text("Toggle — easier on the wrists").tag(AppSettings.HotkeyMode.toggle)
+                    // Short label: segments share the widest label's width and never
+                    // compress, so a long one overflows the 620pt window and clips the
+                    // sidebar. The "easier on the wrists" copy lives in the subtitle.
+                    Text("Toggle").tag(AppSettings.HotkeyMode.toggle)
                 }
                 .pickerStyle(.segmented)
                 .font(.system(size: 13))
@@ -295,7 +298,7 @@ private struct GeneralSection: View {
                         set: { enabled in
                             settings.liveDictationEnabled = enabled
                             if enabled
-                                && !modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+                                && modelManager.vadModelPath() == nil
                                 && !modelManager.isDownloading(.vadSilero) {
                                 modelManager.startDownload(.vadSilero)
                             }
@@ -324,7 +327,7 @@ private struct GeneralSection: View {
         guard settings.liveDictationEnabled else {
             return "Types each phrase when you pause, instead of everything at the end. Works best with small or base models."
         }
-        if modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero) {
+        if modelManager.vadModelPath() != nil {
             return "Types each phrase when you pause. Works best with small or base models."
         }
         if modelManager.isDownloading(.vadSilero) {
@@ -484,6 +487,7 @@ private struct ModelSection: View {
     @ObservedObject var modelManager: ModelManager
     let engine: DictationEngine
     let colorScheme: ColorScheme
+    @State private var pendingDeletion: ModelManager.ModelInfo?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -495,9 +499,9 @@ private struct ModelSection: View {
             }
 
             // VAD model
-            CardHeader("Voice Activity Detection", subtitle: "Trims silence for faster inference (2 MB)")
+            CardHeader("Voice Activity Detection", subtitle: "Trims silence for faster inference (1 MB)")
 
-            let vadDownloaded = modelManager.isModelDownloaded(ModelManager.ModelInfo.vadSilero)
+            let vadDownloaded = modelManager.vadModelPath() != nil  // v6, or legacy v5 until upgraded
             SettingsCard(colorScheme: colorScheme) {
                 HStack(spacing: 14) {
                     ZStack {
@@ -555,6 +559,22 @@ private struct ModelSection: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete \(pendingDeletion?.name ?? "model")?",
+            isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }),
+            presenting: pendingDeletion
+        ) { model in
+            Button("Delete", role: .destructive) {
+                do {
+                    try modelManager.deleteModel(model)
+                    modelManager.downloadError = nil
+                } catch {
+                    modelManager.downloadError = "Couldn’t delete \(model.name): \(error.localizedDescription)"
+                }
+            }
+        } message: { model in
+            Text("This frees \(model.size) on disk. You can download it again later.")
         }
     }
 
@@ -621,6 +641,16 @@ private struct ModelSection: View {
                             .foregroundStyle(.green)
                             .font(.system(size: 18))
                     }
+                    Button {
+                        pendingDeletion = model
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isSelected)
+                    .help(isSelected ? "Activate another model to delete this one" : "Delete from disk")
+                    .accessibilityLabel("Delete \(model.name)")
                 } else if modelManager.isDownloading(model) {
                     downloadingControls(for: model)
                 } else {
@@ -740,7 +770,7 @@ private struct CustomTermsEditor: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(.blue)
-                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || settings.customTerms.count >= 100)
+                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || settings.customTerms.count >= DictationEngine.promptTermLimit)
             }
 
             // Pills
@@ -755,9 +785,11 @@ private struct CustomTermsEditor: View {
 
                 HStack {
                     let count = settings.customTerms.count
-                    Text("\(count) / 100 terms")
+                    let limit = DictationEngine.promptTermLimit
+                    // Lists saved under the old 100 cap are kept; only the first `limit` are used.
+                    Text(count > limit ? "\(count) terms — only the first \(limit) are used" : "\(count) / \(limit) terms")
                         .font(.system(size: 11))
-                        .foregroundColor(count >= 100 ? .orange : .secondary.opacity(0.5))
+                        .foregroundColor(count >= limit ? .orange : .secondary.opacity(0.5))
                     Spacer()
                     Button("Clear All") {
                         settings.customTerms = []
@@ -770,6 +802,8 @@ private struct CustomTermsEditor: View {
     }
 
     private func addTerm() {
+        // Return-key submit bypasses the disabled Add button.
+        guard settings.customTerms.count < DictationEngine.promptTermLimit else { return }
         settings.addCustomTerm(newTerm)
         newTerm = ""
     }

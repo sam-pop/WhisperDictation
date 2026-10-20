@@ -37,11 +37,11 @@ WhisperDictation is a **free, open-source macOS dictation app** -- a local alter
 ## Features
 
 - **Push-to-talk OR toggle mode** -- hold a hotkey and release, OR press once to start and once to stop. Toggle mode is **carpal-tunnel friendly** for long dictations and anyone with RSI; it requires a configurable hold (default 1.5s) to prevent accidental activation.
-- **Live dictation (optional)** -- commit-on-pause streaming: each phrase is typed about half a second after you pause, while you keep speaking. Already-typed text is never revised -- no backspacing into terminals or send-on-enter chat boxes. Off by default; requires the Silero VAD model (2 MB).
+- **Live dictation (optional)** -- commit-on-pause streaming: each phrase is typed about half a second after you pause, while you keep speaking. Already-typed text is never revised -- no backspacing into terminals or send-on-enter chat boxes. Off by default; requires the Silero VAD model (1 MB).
 - **Works in any app** -- Terminal, VS Code, Claude Code, Xcode, Slack, browsers, email -- anywhere you can type
 - **Fast** -- sub-second transcription on Apple Silicon (Metal GPU). Optimized CPU path for Intel Macs.
 - **100% private** -- all audio processing happens locally. Nothing is sent to any server, ever.
-- **Developer-optimized** -- built-in vocabulary of 500+ technical terms biases Whisper toward correct recognition of API, JSON, Kubernetes, PostgreSQL, GraphQL, etc.
+- **Developer-optimized** -- a built-in developer vocabulary plus up to 60 of your own names and terms bias Whisper toward correct recognition of API, JSON, Kubernetes, PostgreSQL, GraphQL, etc. Your terms always take priority.
 - **Smart grammar correction** -- auto-capitalizes sentences, fixes 100+ acronym/term casings (api->API, javascript->JavaScript), adds punctuation
 - **Number word conversion** -- "two four six eight" becomes "2,468", "three hundred forty two" becomes "342"
 - **Multiple Whisper models** -- Base (142 MB, fastest), Small (466 MB, balanced), Medium (1.5 GB, most accurate)
@@ -136,7 +136,7 @@ Once both permissions are granted, you'll see a green "Ready" status in the menu
 
 ### Live Dictation
 
-Prefer to see words while you're still talking? Turn on **Settings > General > Live dictation**. Each phrase is typed about half a second after you pause -- no waiting for release. Already-typed text is never revised, so it's safe in terminals and send-on-enter chat boxes. Requires the Silero VAD model (2 MB); flipping the toggle downloads it automatically.
+Prefer to see words while you're still talking? Turn on **Settings > General > Live dictation**. Each phrase is typed about half a second after you pause -- no waiting for release. Already-typed text is never revised, so it's safe in terminals and send-on-enter chat boxes. Requires the Silero VAD model (1 MB); flipping the toggle downloads it automatically.
 
 ### Menu Bar States
 
@@ -152,8 +152,8 @@ Prefer to see words while you're still talking? Turn on **Settings > General > L
 Click the menu bar icon > Settings to configure:
 
 - **General** -- hotkey binding, live dictation, grammar correction toggle, sound feedback, launch at login
-- **Model** -- download and switch between Whisper models
-- **Vocabulary** -- customize the developer vocabulary prompt for better recognition
+- **Model** -- download, switch between, and delete Whisper models
+- **Vocabulary** -- add up to 60 names and terms, and customize the developer vocabulary prompt
 - **Permissions** -- check and manage macOS permissions
 
 ## Models
@@ -164,9 +164,9 @@ Quantized models are 2-3x smaller and faster than full precision with near-ident
 
 | Model | File | Size | Speed* | Accuracy | Recommended for |
 |-------|------|------|--------|----------|-----------------|
-| Base Q5 | `ggml-base.en-q5_1.bin` | 57 MB | ~0.2s | Good | Quick notes, Intel Macs |
-| **Small Q5** | **`ggml-small.en-q5_1.bin`** | **181 MB** | **~0.4s** | **Better** | **Daily coding use (default)** |
-| Medium Q5 | `ggml-medium.en-q5_0.bin` | 515 MB | ~1.0s | Best | Maximum accuracy |
+| Base Q5 | `ggml-base.en-q5_1.bin` | 57 MB | ~0.1s | Good | Quick notes, Intel Macs |
+| **Small Q5** | **`ggml-small.en-q5_1.bin`** | **181 MB** | **~0.15s** | **Better** | **Daily coding use (default)** |
+| Medium Q5 | `ggml-medium.en-q5_0.bin` | 515 MB | ~0.3s | Best | Maximum accuracy |
 
 ### Full Precision Models
 
@@ -178,11 +178,11 @@ Quantized models are 2-3x smaller and faster than full precision with near-ident
 
 ### Voice Activity Detection (VAD)
 
-Download the Silero VAD model (2 MB) to automatically trim silence from recordings before inference. This significantly speeds up transcription, especially for short push-to-talk clips with silence at the start/end.
+Download the Silero VAD model (1 MB) to automatically trim silence from recordings before inference. This significantly speeds up transcription, especially for short push-to-talk clips with silence at the start/end.
 
 The VAD model also powers **Live dictation** -- the toggle stays off until this model is on disk (enabling it in Settings starts the download automatically).
 
-*Speed measured for a 5-second audio clip on Apple Silicon with Metal GPU. Intel Macs use CPU-only and will be 2-3x slower.
+*Q5 speeds: median transcription time for a ~4-second clip on an M3 Ultra with Metal GPU (v1.3.0). Smaller M-series chips are slower; Intel Macs use the CPU only and are several times slower. Full-precision figures are from an earlier, slower release.
 
 Download models via the script or the Settings > Model tab:
 ```bash
