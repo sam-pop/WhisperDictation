@@ -955,3 +955,17 @@ final class HotkeyModifierPressedTests: XCTestCase {
         XCTAssertTrue(HotkeyMonitor.isModifierPressed(keyCode: 63, flags: .maskSecondaryFn))
     }
 }
+
+// MARK: - WhisperBridge decode thread count
+
+/// Capped at 8: on GPU, 26 vs 8 threads measured identical (M3 Ultra); on CPU-only
+/// decoding (the Intel path) all cores was wildly unstable while 8 was steady.
+final class DecodeThreadCountTests: XCTestCase {
+    func testThreadCountIsCappedAndNeverZero() {
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 28, appleSilicon: true), 8)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 28, appleSilicon: false), 8)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 8, appleSilicon: true), 6)   // keeps 2 cores free
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 4, appleSilicon: false), 4)
+        XCTAssertEqual(WhisperBridge.decodeThreadCount(cores: 1, appleSilicon: true), 1)
+    }
+}
