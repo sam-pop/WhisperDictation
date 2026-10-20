@@ -8,7 +8,7 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
     /// is present here only while it is actively downloading, so each Settings row
     /// shows progress for its own model — not a single shared bar.
     @Published var activeDownloads: [String: Double] = [:]
-    /// Latest download failure, surfaced regardless of which tab is visible.
+    /// Latest download (or delete) failure, surfaced regardless of which tab is visible.
     @Published var downloadError: String?
 
     /// In-flight download tasks keyed by model `fileName`, for cancellation.
@@ -233,9 +233,21 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// The active model is never deletable: removing it would leave the engine with
+    /// nothing to (re)load. Users activate another model first.
+    static func isDeletable(_ model: ModelInfo, selectedModel: String) -> Bool {
+        model.settingsId != selectedModel
+    }
+
+    /// Removes a downloaded model from disk. Refuses the active model. Main actor:
+    /// `isModelDownloaded` reads the disk directly, so SwiftUI is told explicitly.
+    @MainActor
     func deleteModel(_ model: ModelInfo) throws {
-        let path = modelsDirectory.appendingPathComponent(model.fileName)
-        try fileManager.removeItem(at: path)
+        guard Self.isDeletable(model, selectedModel: AppSettings.shared.selectedModel) else {
+            throw ModelError.modelInUse
+        }
+        objectWillChange.send()
+        try fileManager.removeItem(at: modelsDirectory.appendingPathComponent(model.fileName))
     }
 
     // MARK: - Integrity helpers (testable, pure)
@@ -260,9 +272,12 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
 enum ModelError: LocalizedError {
     case badStatus(Int)
     case checksumMismatch(expected: String, actual: String)
+    case modelInUse
 
     var errorDescription: String? {
         switch self {
+        case .modelInUse:
+            return "The active model can’t be deleted. Activate another model first."
         case .badStatus(let code):
             return "Server returned HTTP \(code)."
         case .checksumMismatch:

@@ -18,7 +18,8 @@ struct WhisperDictationApp: App {
         Window("WhisperDictation Settings", id: "settings") {
             SettingsView(engine: engine)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 620, height: 460)
+        .windowResizability(.contentMinSize)
         .defaultPosition(.center)
 
         Window("Welcome to WhisperDictation", id: "onboarding") {
