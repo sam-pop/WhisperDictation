@@ -14,6 +14,19 @@ final class SegmentJoinTests: XCTestCase {
         XCTAssertEqual(collector.joinAndAppend("Second sentence."), " Second sentence.")
         XCTAssertEqual(collector.text, "First sentence. Second sentence.")
     }
+
+    /// A sentence can end inside closing quotes/parens; the next segment still
+    /// starts a sentence (matches the in-string capitalizer).
+    func testSentenceStartSeesThroughClosingQuotesAndParens() {
+        for ended in ["He said \"stop.\"", "(See above.)", "It's 'done!'"] {
+            let collector = TranscriptCollector()
+            _ = collector.joinAndAppend(ended)
+            XCTAssertTrue(collector.atSentenceStart, ended)
+        }
+        let open = TranscriptCollector()
+        _ = open.joinAndAppend("eggs, \"milk\"")
+        XCTAssertFalse(open.atSentenceStart)
+    }
 }
 
 final class LiveSessionDecisionTests: XCTestCase {

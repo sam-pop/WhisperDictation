@@ -132,12 +132,17 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
     }
 
     /// Existing installs have only the v5 VAD model: fetch v6 in the background
-    /// (verified like any download). v5 keeps serving until v6 is in place.
+    /// (verified like any download, failures logged, not shown). v5 keeps serving
+    /// until v6 is in place; the launch after that removes it. Runs at launch.
     @MainActor
     func upgradeLegacyVADIfNeeded() {
-        let hasLegacy = fileManager.fileExists(atPath: modelsDirectory.appendingPathComponent(Self.legacyVADFileName).path)
-        guard hasLegacy, !isModelDownloaded(.vadSilero) else { return }
-        startDownload(.vadSilero)
+        let legacy = modelsDirectory.appendingPathComponent(Self.legacyVADFileName)
+        guard fileManager.fileExists(atPath: legacy.path) else { return }
+        if isModelDownloaded(.vadSilero) {
+            try? fileManager.removeItem(at: legacy)   // nothing has it open: VAD paths resolve per use
+        } else if !isDownloading(.vadSilero) {
+            startDownload(.vadSilero, surfaceErrors: false)
+        }
     }
 
     func isModelDownloaded(_ model: ModelInfo) -> Bool {
@@ -168,15 +173,15 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
     /// Fire-and-forget download entry point for the UI. Registers a cancellable
     /// task keyed by the model's fileName; ignores duplicate starts.
     @MainActor
-    func startDownload(_ model: ModelInfo) {
+    func startDownload(_ model: ModelInfo, surfaceErrors: Bool = true) {
         let key = model.fileName
         guard downloadTasks[key] == nil else { return }
         let generation = (downloadGeneration[key] ?? 0) + 1
         downloadGeneration[key] = generation
         activeDownloads[key] = 0
-        downloadError = nil
+        if surfaceErrors { downloadError = nil }
         downloadTasks[key] = Task { [weak self] in
-            await self?.runDownload(model, generation: generation)
+            await self?.runDownload(model, generation: generation, surfaceErrors: surfaceErrors)
         }
     }
 
@@ -207,7 +212,9 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
     /// Downloads, verifies (HTTP status + pinned SHA256), and installs a model.
     /// Safe to run twice: the temp file is verified before it replaces any existing
     /// model, and a mismatch throws without touching the installed copy.
-    private func runDownload(_ model: ModelInfo, generation: Int) async {
+    /// `surfaceErrors: false` (background upgrades) logs failures to stderr only, so
+    /// an offline launch doesn't post an error the user can't act on.
+    private func runDownload(_ model: ModelInfo, generation: Int, surfaceErrors: Bool) async {
         let key = model.fileName
         let destination = modelsDirectory.appendingPathComponent(model.fileName)
 
@@ -247,7 +254,7 @@ final class ModelManager: ObservableObject, @unchecked Sendable {
         } catch {
             fputs("[ModelManager] Download failed for \(model.name): \(error)\n", stderr)
             await finishDownload(key: key, generation: generation,
-                                 error: "Couldn’t download \(model.name): \(error.localizedDescription)")
+                                 error: surfaceErrors ? "Couldn’t download \(model.name): \(error.localizedDescription)" : nil)
         }
     }
 

@@ -311,9 +311,15 @@ final class DictationEngine {
     /// and silently drops the rest from the front. The default vocabulary prompt
     /// measures 2.48 tokens/word (1373 tokens / 553 words), so 89 words fit.
     static let promptWordBudget = 89
+    /// Live-mode context carried into each chunk's prompt.
+    static let liveTailWordCap = 29
+    /// Custom terms that reach the prompt — all of them, even with a full live tail.
+    /// The Vocabulary UI caps additions here; stored lists may hold more (never
+    /// truncated) but only the first `promptTermLimit` are sent.
+    static let promptTermLimit = promptWordBudget - liveTailWordCap
 
     /// Builds the whisper initial_prompt within `promptWordBudget` words, filled by
-    /// priority: committed-transcript tail (≤50 words), then the user's custom terms,
+    /// priority: committed-transcript tail (≤ liveTailWordCap), then custom terms,
     /// then the base vocabulary prompt from its start. Output order is base, terms,
     /// tail — lowest priority at the front, which is what whisper drops if the
     /// words→tokens estimate overshoots. Pure/static so it is unit-testable.
@@ -322,11 +328,11 @@ final class DictationEngine {
     ///   live mode so each chunk decodes with the preceding words as context. Empty
     ///   (the default) gives the same prompt as the non-live path.
     static func buildPrompt(base: String, customTerms: [String], transcriptTail: String = "") -> String {
-        let tailWords = transcriptTail.split(separator: " ").suffix(min(50, promptWordBudget))
+        let tailWords = transcriptTail.split(separator: " ").suffix(liveTailWordCap)
         var remaining = promptWordBudget - tailWords.count
 
         // Terms keep their historical one-unit-each accounting.
-        let termsToAdd = customTerms.prefix(remaining)
+        let termsToAdd = customTerms.prefix(min(remaining, promptTermLimit))
         remaining -= termsToAdd.count
 
         let baseWords = base.split(separator: " ")
@@ -361,6 +367,7 @@ final class DictationEngine {
             try audioCapture.startRecording()
         } catch {
             fputs("[DictationEngine] Failed to start recording: \(error)\n", stderr)
+            transcriptionError = "Couldn’t start recording: \(error.localizedDescription)"
             if live {
                 // The consumer's finish owns returnToIdle. Going idle here let a
                 // re-press queued behind this (blocking) start begin a new recording
@@ -793,8 +800,10 @@ final class TranscriptCollector: @unchecked Sendable {
     /// True when the next appended segment begins a sentence: nothing has
     /// been collected yet, or the collected text ends in terminal punctuation.
     var atSentenceStart: Bool {
-        guard let last = text.last else { return true }
-        return ".!?".contains(last)
+        guard !text.isEmpty else { return true }
+        // A sentence can end inside closing quotes/parens: `"stop."`, `(see above.)`.
+        let last = text.reversed().first { !"\"')".contains($0) }
+        return last.map { ".!?".contains($0) } ?? true
     }
 
     /// Returns `segment` as it should be typed — with a leading space when

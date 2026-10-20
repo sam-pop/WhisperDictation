@@ -770,7 +770,7 @@ private struct CustomTermsEditor: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(.blue)
-                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || settings.customTerms.count >= 100)
+                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || settings.customTerms.count >= DictationEngine.promptTermLimit)
             }
 
             // Pills
@@ -785,9 +785,11 @@ private struct CustomTermsEditor: View {
 
                 HStack {
                     let count = settings.customTerms.count
-                    Text("\(count) / 100 terms")
+                    let limit = DictationEngine.promptTermLimit
+                    // Lists saved under the old 100 cap are kept; only the first `limit` are used.
+                    Text(count > limit ? "\(count) terms — only the first \(limit) are used" : "\(count) / \(limit) terms")
                         .font(.system(size: 11))
-                        .foregroundColor(count >= 100 ? .orange : .secondary.opacity(0.5))
+                        .foregroundColor(count >= limit ? .orange : .secondary.opacity(0.5))
                     Spacer()
                     Button("Clear All") {
                         settings.customTerms = []
@@ -800,6 +802,8 @@ private struct CustomTermsEditor: View {
     }
 
     private func addTerm() {
+        // Return-key submit bypasses the disabled Add button.
+        guard settings.customTerms.count < DictationEngine.promptTermLimit else { return }
         settings.addCustomTerm(newTerm)
         newTerm = ""
     }
