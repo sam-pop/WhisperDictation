@@ -129,7 +129,17 @@ final class HotkeyMonitor {
         }
     }
 
+    /// True for events our own process posted. TextInjector types as virtualKey 0
+    /// (the A key), so with an "A" hotkey our typing would otherwise be swallowed
+    /// as hotkey presses and cancel the transcription it belongs to.
+    static func isOwnEvent(sourcePID: Int64) -> Bool {
+        sourcePID == Int64(getpid())
+    }
+
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if Self.isOwnEvent(sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)) {
+            return Unmanaged.passRetained(event)
+        }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         if isModifierKey {
