@@ -30,7 +30,7 @@ SWIFT_FILES := \
 	WhisperDictation/App/WhisperDictationApp.swift
 
 LIBS := -lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lggml-blas -lc++
-FRAMEWORKS := -framework Accelerate -framework Metal -framework MetalKit -framework AVFoundation -framework CoreGraphics -framework AppKit -framework Foundation -framework ServiceManagement -framework CoreAudio
+FRAMEWORKS := -framework Accelerate -framework Metal -framework MetalKit -framework AVFoundation -framework CoreGraphics -framework AppKit -framework Foundation -framework ServiceManagement -framework CoreAudio -framework AudioToolbox
 
 .PHONY: all clean whisper model app run dmg
 
